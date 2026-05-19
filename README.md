@@ -36,6 +36,21 @@ Primary references:
 - [Guaranteed messaging endpoints](https://docs.solace.com/Messaging/Guaranteed-Msg/Endpoints.htm)
 - [Using SEMP](https://docs.solace.com/Admin/SEMP/Using-SEMP.htm)
 - [SEMP features and request frequency](https://docs.solace.com/Admin/SEMP/SEMP-Features.htm)
+- [Configuring queues](https://docs.solace.com/Messaging/Guaranteed-Msg/Configuring-Queues.htm)
+
+### Best Practice Implementation Map
+
+| Solace practice | Pipeline contract | Enforced by |
+|---|---|---|
+| Design event topics with a clear domain, noun, verb, and version. | Topic destinations use `domain/noun/verb/version`; the generated noun is a single camelCase level and long nouns are bounded with a stable hash. | `naming.py`, `planning.py`, `tests/test_naming_redaction_retry.py` |
+| Keep topic hierarchies concise and within broker limits. | Published topics fail validation above 250 characters, above 128 levels, with spaces, empty levels, publisher wildcards, or invalid level characters. | `naming-policy.schema.json`, `naming.py`, `planning.py` |
+| Keep deployment topology and tracing metadata out of topic levels. | Environment levels and tracing terms are configured as forbidden values in `naming-policy.yaml`. | `examples/naming-policy.example.yaml`, `naming.py` |
+| Use topic hierarchy and subscriptions for routing instead of selectors. | Queue topic subscriptions can be listed in `topic_subscriptions` and are provisioned through SEMP. Subscription wildcards are validated before provisioning. | `models.py`, `planning.py`, `solace_semp.py`, `tests/test_solace_semp.py` |
+| Use durable queues for guaranteed delivery and point-to-point compatibility. | `QUEUE` is the default destination type, persistent sends are the default delivery mode, and generated queues are deterministic. | `examples/migration.example.yaml`, `component_builder.py`, `naming.py` |
+| Configure poison-message handling. | `provision_dmq` defaults to true and creates a per-queue `{queue}_dmq`; finite `max_redelivery_count` is supported and validated. | `execution.py`, `solace_semp.py`, `tests/test_solace_semp.py` |
+| Bound queue resource usage. | `max_spool_usage_mb` and `max_ttl_seconds` are plan fields and SEMP queue settings. | `models.py`, `schemas/migration.schema.json`, `solace_semp.py` |
+| Use SEMP v2 config for provisioning and monitor endpoints for runtime checks. | Provisioning writes to `/SEMP/v2/config`; post-provision checks read `/SEMP/v2/monitor` for queue stats and bind visibility. | `solace_semp.py`, `execution.py` |
+| Avoid aggressive SEMP polling. | SEMP calls use retries, request timeouts, and a default minimum interval of `0.11` seconds, which keeps average request rate below 10 requests per second. | `.env.example`, `solace_semp.py`, `http_retry.py` |
 
 ## Repository Contents
 
@@ -209,6 +224,36 @@ processes:
 
 For online account inventory, `xml_path` can be omitted after discovery identifies the target process IDs.
 
+### Runtime Field Reference
+
+The same runtime fields can be set under `defaults` or overridden per process:
+
+| Field | Default | Purpose |
+|---|---|---|
+| `destination_type` | `QUEUE` | Selects queue or topic operation generation. Queue is the Atom Queue parity mode. |
+| `delivery_mode` | `PERSISTENT` | Uses Solace guaranteed delivery for queue sends. |
+| `queue_access_type` | `exclusive` | Uses one active consumer by default. Use `non-exclusive` for competing consumers. |
+| `queue_permission` | `consume` | Permission assigned to non-owner clients when the queue is provisioned. |
+| `queue_owner` | empty | Optional Solace client username to own the provisioned queue. Empty leaves ownership with management. |
+| `provision_dmq` | `true` | Creates or validates a per-queue DMQ named `{queue}_dmq`. |
+| `max_redelivery_count` | `0` | Maximum redelivery attempts. Use a finite value with a DMQ for poison-message handling. |
+| `max_ttl_seconds` | `0` | Queue maximum TTL in seconds. `0` leaves maximum TTL disabled. |
+| `max_spool_usage_mb` | unset | Optional queue spool quota in MB. The example sets `5000`. |
+| `topic_subscriptions` | `[]` | Topic subscriptions added to queues through SEMP. Use these for routing instead of selectors. |
+
+The naming policy is also part of the runtime contract:
+
+| Field | Purpose |
+|---|---|
+| `queue.max_length` | Internal generated queue length. The example uses 80 for readable names. |
+| `queue.solace_max_length` | Solace durable queue name limit. The example uses 200. |
+| `queue.allowed_pattern` | Organization policy for queue characters. The Solace invalid characters are rejected regardless. |
+| `topic.domain` | Required prefix for generated and custom topic destinations. |
+| `topic.verb` | Static event action level used for generated topics. |
+| `topic.version` | Static event version level. Must match `vN`. |
+| `topic.forbidden_levels` | Levels that cannot appear in topics or subscriptions, for example deployment environments. |
+| `topic.forbidden_terms` | Terms that cannot appear anywhere in topics or subscriptions, for example tracing identifiers. |
+
 ## Pipeline Steps
 
 ### Safe Pipeline Entry Point
@@ -301,6 +346,17 @@ The command writes:
 
 The plan ID is derived from migration version, source XML hashes, connector subtype, source connector types, destinations, and operations. Running the same inputs twice produces the same plan ID and canonical XML.
 
+The plan also carries the Solace runtime contract for each process:
+
+- destination queue or topic
+- queue access type and permission
+- optional queue owner
+- DMQ provisioning flag
+- max redelivery count
+- max TTL
+- max spool usage
+- queue topic subscriptions
+
 ### 3. Validate
 
 Validate schemas and plan structure:
@@ -342,6 +398,16 @@ boomi-solace provision-solace \
 ```
 
 The Solace step validates or creates queue resources for planned queue destinations, applies optional queue topic subscriptions, and reads SEMP monitor data for queue depth and bind checks. When `provision_dmq` is enabled, the pipeline uses `{queue}_dmq` as the default per-queue DMQ.
+
+The SEMP preflight and provision command is idempotent:
+
+- existing queues are reported as `exists`
+- missing queues are created only when `--dry-run` is not set
+- DMQs are created before the primary queue that references them
+- topic subscriptions are checked before creation
+- monitor results are summarized after provisioning
+- 429 and 5xx responses are retried with backoff
+- sensitive response text is redacted before errors are surfaced
 
 Recommended Solace defaults:
 
@@ -469,6 +535,9 @@ Before publishing:
 ```bash
 git status --short
 rg -n "local-home-placeholder|real-token-placeholder|real-password-placeholder" .
+rg -n --fixed-strings "$HOME" . --glob '!requirements-dev.lock' --glob '!examples/out/**'
+rg -n --fixed-strings "$USER" . --glob '!requirements-dev.lock' --glob '!examples/out/**'
+rg -n "\\x{2014}|\\x{2013}|\\x{2026}" . --pcre2 --glob '!requirements-dev.lock' --glob '!examples/out/**'
 make check
 ```
 
