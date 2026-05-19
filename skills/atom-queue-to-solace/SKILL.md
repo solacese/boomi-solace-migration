@@ -63,9 +63,13 @@ tracked in a run manifest.
 
 - Default Atom Queue migrations to durable Solace queues with persistent sends.
 - Use topics only when the migration config explicitly selects `TOPIC`.
+- Use `Domain/Noun/Verb/Version` topics, with the noun as one camelCase topic
+  level and no deployment environment or trace IDs in topic levels.
 - Prefer topic hierarchy and queue subscriptions over selectors for routing.
 - Provision or validate a DMQ for queues; the default generated DMQ is
   `{queue}_dmq`.
+- Set finite max redelivery when a DMQ is configured.
+- Keep SEMP calls throttled through `SOLACE_SEMP_MIN_INTERVAL_SECONDS`.
 - Deploy consumers before producers during cutover.
 
 ## References

@@ -14,7 +14,12 @@ defaults:
   destination_type: QUEUE
   delivery_mode: PERSISTENT
   queue_access_type: exclusive
+  queue_permission: consume
   provision_dmq: true
+  max_redelivery_count: 5
+  max_ttl_seconds: 0
+  max_spool_usage_mb: 5000
+  topic_subscriptions: []
 processes:
   - id: producer-process
     name: Sample Producer Process

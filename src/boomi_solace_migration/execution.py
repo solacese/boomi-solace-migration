@@ -164,6 +164,12 @@ def provision_solace_destinations(
                         "status": "would_validate_or_create",
                         "dmq": dmq_name,
                         "access_type": process.get("queue_access_type", "exclusive"),
+                        "permission": process.get("queue_permission", "consume"),
+                        "owner": process.get("queue_owner", ""),
+                        "max_redelivery_count": process.get("max_redelivery_count", 0),
+                        "max_ttl_seconds": process.get("max_ttl_seconds", 0),
+                        "max_spool_usage_mb": process.get("max_spool_usage_mb"),
+                        "topic_subscriptions": process.get("topic_subscriptions", []),
                     }
                 )
                 continue
@@ -173,18 +179,54 @@ def provision_solace_destinations(
                     client.ensure_queue(
                         queue_name=dmq_name,
                         access_type="exclusive",
+                        permission="consume",
+                        max_spool_usage_mb=process.get("max_spool_usage_mb"),
                         dry_run=False,
                     )
                 )
+                results.append(_queue_monitor_result(client, dmq_name))
             results.append(
                 client.ensure_queue(
                     queue_name=destination,
                     access_type=process.get("queue_access_type", "exclusive"),
                     dmq_name=dmq_name,
+                    permission=process.get("queue_permission", "consume"),
+                    owner=process.get("queue_owner", ""),
+                    max_redelivery_count=int(process.get("max_redelivery_count", 0) or 0),
+                    max_ttl_seconds=int(process.get("max_ttl_seconds", 0) or 0),
+                    max_spool_usage_mb=process.get("max_spool_usage_mb"),
                     dry_run=False,
                 )
             )
+            results.append(_queue_monitor_result(client, destination))
+            for subscription in process.get("topic_subscriptions", []):
+                results.append(
+                    client.ensure_queue_subscription(
+                        queue_name=destination,
+                        subscription=str(subscription),
+                        dry_run=False,
+                    )
+                )
     return {"dry_run": dry_run, "results": results}
+
+
+def _queue_monitor_result(client: SolaceSempClient, queue_name: str) -> dict[str, Any]:
+    stats = client.queue_stats(queue_name)
+    if stats is None:
+        return {"queue": queue_name, "status": "monitor_missing"}
+    summary_keys = {
+        "bindCount",
+        "currentMsgSpoolUsage",
+        "msgSpoolUsage",
+        "msgSpoolUsageBytes",
+        "redeliveredMsgCount",
+        "spooledMsgCount",
+    }
+    return {
+        "queue": queue_name,
+        "status": "monitor_found",
+        "data": {key: stats[key] for key in sorted(summary_keys) if key in stats},
+    }
 
 
 def dump_json(data: dict[str, Any], output: str | Path) -> None:

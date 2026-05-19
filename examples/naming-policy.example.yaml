@@ -2,14 +2,33 @@ queue:
   prefix: boomi
   separator: _
   max_length: 80
+  solace_max_length: 200
   case: lower
   collision_hash_length: 8
   allowed_pattern: "^[a-z0-9_.-]+$"
 topic:
   separator: /
   max_length: 250
-  case: preserve
+  max_levels: 128
+  case: camel
+  collision_hash_length: 8
+  domain: boomi/migration
+  verb: published
+  version: v1
   taxonomy: "Domain/Noun/Verb/Version/Properties"
+  allowed_level_pattern: "^[A-Za-z0-9]+$"
+  require_domain_prefix: true
+  allow_subscription_exceptions: false
+  forbidden_levels:
+    - dev
+    - qa
+    - prod
+    - production
+    - staging
+  forbidden_terms:
+    - traceid
+    - spanid
+    - trace
 reserved_words:
   - "#DEAD_MSG_QUEUE"
   - default

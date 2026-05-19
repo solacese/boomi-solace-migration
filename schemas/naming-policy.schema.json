@@ -2,8 +2,39 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
-    "queue": { "type": "object" },
-    "topic": { "type": "object" },
+    "queue": {
+      "type": "object",
+      "properties": {
+        "prefix": { "type": "string" },
+        "separator": { "type": "string", "minLength": 1 },
+        "max_length": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "solace_max_length": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "case": { "enum": ["lower", "preserve"] },
+        "collision_hash_length": { "type": "integer", "minimum": 4, "maximum": 32 },
+        "allowed_pattern": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "topic": {
+      "type": "object",
+      "properties": {
+        "separator": { "const": "/" },
+        "max_length": { "type": "integer", "minimum": 1, "maximum": 250 },
+        "max_levels": { "type": "integer", "minimum": 1, "maximum": 128 },
+        "case": { "enum": ["camel", "pascal", "lower", "preserve"] },
+        "collision_hash_length": { "type": "integer", "minimum": 4, "maximum": 32 },
+        "domain": { "type": "string", "minLength": 1 },
+        "verb": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "pattern": "^v[0-9]+$" },
+        "taxonomy": { "type": "string" },
+        "allowed_level_pattern": { "type": "string" },
+        "require_domain_prefix": { "type": "boolean" },
+        "allow_subscription_exceptions": { "type": "boolean" },
+        "forbidden_levels": { "type": "array", "items": { "type": "string" } },
+        "forbidden_terms": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
     "reserved_words": { "type": "array", "items": { "type": "string" } }
   },
   "additionalProperties": true

@@ -20,6 +20,12 @@ def _config(tmp_path: Path) -> MigrationConfig:
             "username": "user",
             "password": "pass",
         },
+        "defaults": {
+            "max_redelivery_count": 5,
+            "max_ttl_seconds": 0,
+            "max_spool_usage_mb": 5000,
+            "topic_subscriptions": ["boomi/migration/sampleProducerProcess/published/v1"],
+        },
         "processes": [
             {
                 "id": "producer-process",
@@ -93,3 +99,5 @@ def test_provision_solace_dry_run(tmp_path, connector_profile, naming_policy) ->
     result = provision_solace_destinations(plan=plan, dry_run=True)
     assert result["dry_run"] is True
     assert result["results"][0]["status"] == "would_validate_or_create"
+    assert result["results"][0]["max_redelivery_count"] == 5
+    assert result["results"][0]["topic_subscriptions"] == ["boomi/migration/sampleProducerProcess/published/v1"]

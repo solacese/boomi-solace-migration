@@ -13,7 +13,13 @@ from .component_builder import (
 )
 from .detect import detect_queue_usage
 from .models import ConnectorProfile, MigrationConfig, NamingPolicy, ProcessConfig
-from .naming import destination_for_process, stable_hash
+from .naming import (
+    destination_for_process,
+    stable_hash,
+    validate_queue_name,
+    validate_topic_name,
+    validate_topic_subscription,
+)
 from .transform import transform_process_xml
 from .validation import (
     fail_on_issues,
@@ -66,6 +72,14 @@ def build_plan(
                 "source_hash": entry["source_hash"],
                 "send_destination": entry["send_destination"],
                 "receive_destination": entry["receive_destination"],
+                "queue_access_type": entry["queue_access_type"],
+                "queue_permission": entry["queue_permission"],
+                "queue_owner": entry["queue_owner"],
+                "provision_dmq": entry["provision_dmq"],
+                "topic_subscriptions": entry["topic_subscriptions"],
+                "max_redelivery_count": entry["max_redelivery_count"],
+                "max_ttl_seconds": entry["max_ttl_seconds"],
+                "max_spool_usage_mb": entry["max_spool_usage_mb"],
                 "operations": entry["operations"],
             }
             for entry in entries
@@ -113,8 +127,28 @@ def _plan_process(
     short = stable_hash(f"{process.id}:{source_hash}", 10)
     stem = safe_file_stem(f"{process.name}_{short}")
     actions = sorted({op.action for op in detection.operations})
+    _validate_queue_runtime_settings(process)
     send_destination = destination_for_process(process, naming_policy, send=True)
     receive_destination = destination_for_process(process, naming_policy, send=False)
+    if process.destination_type == "TOPIC":
+        for destination in {send_destination, receive_destination}:
+            topic_issues = validate_topic_name(destination, naming_policy)
+            if topic_issues:
+                raise ValueError(f"{process.id}: invalid topic {destination}: {topic_issues}")
+    else:
+        for destination in {send_destination, receive_destination}:
+            queue_issues = validate_queue_name(destination, naming_policy)
+            if queue_issues:
+                raise ValueError(f"{process.id}: invalid queue {destination}: {queue_issues}")
+        if process.provision_dmq:
+            for destination in {send_destination, receive_destination}:
+                dmq_issues = validate_queue_name(f"{destination}_dmq", naming_policy)
+                if dmq_issues:
+                    raise ValueError(f"{process.id}: invalid DMQ {destination}_dmq: {dmq_issues}")
+    for subscription in process.topic_subscriptions:
+        subscription_issues = validate_topic_subscription(subscription, naming_policy)
+        if subscription_issues:
+            raise ValueError(f"{process.id}: invalid queue subscription {subscription}: {subscription_issues}")
 
     metadata = {
         "source_process_id": process.id,
@@ -205,6 +239,12 @@ def _plan_process(
         "receive_destination": receive_destination,
         "queue_access_type": process.queue_access_type,
         "provision_dmq": process.provision_dmq,
+        "topic_subscriptions": list(process.topic_subscriptions),
+        "queue_permission": process.queue_permission,
+        "queue_owner": process.queue_owner,
+        "max_redelivery_count": process.max_redelivery_count,
+        "max_ttl_seconds": process.max_ttl_seconds,
+        "max_spool_usage_mb": process.max_spool_usage_mb,
         "connection": {
             "component_name": connection_name,
             "xml_path": str(connection_xml_path),
@@ -218,3 +258,16 @@ def _plan_process(
 
 def load_plan(path: str | Path) -> dict[str, Any]:
     return cast(dict[str, Any], json.loads(Path(path).read_text(encoding="utf-8")))
+
+
+def _validate_queue_runtime_settings(process: ProcessConfig) -> None:
+    if process.queue_access_type not in {"exclusive", "non-exclusive"}:
+        raise ValueError(f"{process.id}: queue_access_type must be exclusive or non-exclusive")
+    if process.queue_permission not in {"no-access", "read-only", "consume", "modify-topic", "delete"}:
+        raise ValueError(f"{process.id}: queue_permission is not a supported Solace permission")
+    if not 0 <= process.max_redelivery_count <= 255:
+        raise ValueError(f"{process.id}: max_redelivery_count must be between 0 and 255")
+    if process.max_ttl_seconds < 0:
+        raise ValueError(f"{process.id}: max_ttl_seconds must be greater than or equal to 0")
+    if process.max_spool_usage_mb is not None and process.max_spool_usage_mb <= 0:
+        raise ValueError(f"{process.id}: max_spool_usage_mb must be greater than 0")

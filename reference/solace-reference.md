@@ -18,10 +18,14 @@ Solace PubSub+ is an enterprise event broker that supports multiple messaging pr
 - CLI: `show queue my-queue`
 
 ### Topics
-- **Pub/Sub** destinations using a hierarchical name (e.g. `domain/entity/created`)
+- **Pub/Sub** destinations using a hierarchical name such as `domain/entity/created`
 - Publishers send to a topic; subscribers receive from matching topic subscriptions
 - Topics are not stored - messages are lost unless a durable queue subscribes to the topic
 - Use topic wildcards: `domain/>` (match all under `domain/`), `domain/*/created`
+- Recommended event topic root: `Domain/Noun/Verb/Version`
+- Keep generated nouns in one camelCase level, for example `orderCreatedEvent`
+- Do not place environment names or tracing IDs in topic levels
+- Prefer topic hierarchy and queue subscriptions over selectors
 
 ### Topic Endpoints (Durable Topic Subscriptions)
 - A queue that automatically subscribes to a topic pattern
@@ -92,7 +96,10 @@ Content-Type: application/json
   "accessType": "exclusive",
   "permission": "consume",
   "maxMsgSize": 10000000,
-  "maxMsgSpoolUsage": 1500
+  "maxMsgSpoolUsage": 1500,
+  "deadMsgQueue": "my_queue_dmq",
+  "maxRedeliveryCount": 5,
+  "redeliveryEnabled": true
 }
 ```
 
@@ -106,7 +113,8 @@ Content-Type: application/json
 }
 ```
 
-For on-premises Solace brokers, use SEMP v2 at `https://broker-host:943/SEMP/v2/config`.
+For broker-level automation, use SEMP v2 at `https://broker-host:943/SEMP/v2/config`.
+Keep SEMP calls throttled. The CLI defaults to `SOLACE_SEMP_MIN_INTERVAL_SECONDS=0.11`.
 
 ---
 
@@ -151,16 +159,21 @@ User Property names are case-sensitive. The migration tool uses camelCase (e.g. 
 
 ## Dead Message Queue (DMQ)
 
-Solace can route undeliverable messages to a special queue called `#DEAD_MSG_QUEUE`. Configure this on the queue:
+Solace can route undeliverable messages to a DMQ. Prefer a per-queue DMQ such as
+`{queue}_dmq` so ownership, monitoring, and cleanup remain scoped to the migrated
+flow:
 
 ```json
 {
-  "deadMsgQueue": "#DEAD_MSG_QUEUE",
-  "maxRedeliveryCount": 3
+  "deadMsgQueue": "my_queue_dmq",
+  "maxRedeliveryCount": 5,
+  "redeliveryEnabled": true
 }
 ```
 
-If the consumer fails to acknowledge a message after `maxRedeliveryCount` attempts, the message is moved to the DMQ. Monitor the DMQ in Solace Console under **Queues -> #DEAD_MSG_QUEUE**.
+If the consumer fails to acknowledge a message after `maxRedeliveryCount`
+attempts, the message is moved to the DMQ. Monitor both the primary queue and
+the DMQ in Solace Console under **Queues**.
 
 ---
 

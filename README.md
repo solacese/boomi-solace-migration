@@ -12,6 +12,31 @@ The pipeline is intentionally conservative:
 - Unknown queue-like connectors and unsupported actions fail closed.
 - Solace queues are the default target for Atom Queue parity.
 
+## Solace Best Practices Encoded
+
+The pipeline follows the Solace guidance in the official best practices, topic architecture, guaranteed messaging, and SEMP documentation:
+
+- Generated topics follow `Domain/Noun/Verb/Version` and keep the noun as one camelCase level.
+- Published topics are validated against Solace topic limits: 250 characters, 128 levels, no spaces, and no publisher wildcards.
+- Application topics are rejected when they start with reserved `#` or `_` prefixes.
+- Topic levels reject deployment environments such as `dev`, `qa`, and `prod`, and tracing identifiers such as `traceId` and `spanId`.
+- Custom topic destinations must start with the configured domain prefix by default.
+- Queue names are bounded, deterministic, hash-suffixed, and checked for invalid Solace characters.
+- Atom Queue parity defaults to durable Solace queues with persistent sends.
+- DMQs are provisioned per queue by default with `{queue}_dmq`.
+- Queue provisioning supports explicit access type, permission, owner, max redelivery count, TTL, and message spool limits.
+- Optional queue topic subscriptions are provisioned through SEMP so routing can use topic hierarchy instead of selectors.
+- SEMP calls use retries, request timeouts, and a default interval of 0.11 seconds between calls.
+- Cutover deploys consumers before producers and monitors queue depth, redelivery, DMQ depth, and bound consumers.
+
+Primary references:
+
+- [Solace best practices](https://docs.solace.com/Get-Started/best-practices.htm)
+- [Topic architecture best practices](https://docs.solace.com/Messaging/Topic-Architecture-Best-Practices.htm)
+- [Guaranteed messaging endpoints](https://docs.solace.com/Messaging/Guaranteed-Msg/Endpoints.htm)
+- [Using SEMP](https://docs.solace.com/Admin/SEMP/Using-SEMP.htm)
+- [SEMP features and request frequency](https://docs.solace.com/Admin/SEMP/SEMP-Features.htm)
+
 ## Repository Contents
 
 | Path | Purpose |
@@ -79,6 +104,9 @@ SOLACE_MESSAGE_VPN=default
 SOLACE_HOST=smfs://broker.placeholder.invalid:55443
 SOLACE_CLIENT_USERNAME=boomi-client
 SOLACE_CLIENT_PASSWORD=replace-me
+
+SOLACE_SEMP_MIN_INTERVAL_SECONDS=0.11
+SOLACE_SEMP_TIMEOUT_SECONDS=30
 ```
 
 Load it before online operations:
@@ -115,12 +143,33 @@ queue:
   prefix: boomi
   separator: _
   max_length: 80
+  solace_max_length: 200
   case: lower
   collision_hash_length: 8
+  allowed_pattern: "^[a-z0-9_.-]+$"
 topic:
   separator: /
   max_length: 250
+  max_levels: 128
+  case: camel
+  collision_hash_length: 8
+  domain: boomi/migration
+  verb: published
+  version: v1
   taxonomy: "Domain/Noun/Verb/Version/Properties"
+  allowed_level_pattern: "^[A-Za-z0-9]+$"
+  require_domain_prefix: true
+  allow_subscription_exceptions: false
+  forbidden_levels:
+    - dev
+    - qa
+    - prod
+    - production
+    - staging
+  forbidden_terms:
+    - traceid
+    - spanid
+    - trace
 ```
 
 ### `migration.yaml`
@@ -144,7 +193,12 @@ defaults:
   destination_type: QUEUE
   delivery_mode: PERSISTENT
   queue_access_type: exclusive
+  queue_permission: consume
   provision_dmq: true
+  max_redelivery_count: 5
+  max_ttl_seconds: 0
+  max_spool_usage_mb: 5000
+  topic_subscriptions: []
 processes:
   - id: source-process-guid
     name: Sample Producer Process
@@ -287,7 +341,7 @@ boomi-solace provision-solace \
   --plan out/pipeline-plan/migration-plan.json
 ```
 
-The Solace step validates or creates queue resources for planned queue destinations. When `provision_dmq` is enabled, the pipeline uses `{queue}_dmq` as the default per-queue DMQ.
+The Solace step validates or creates queue resources for planned queue destinations, applies optional queue topic subscriptions, and reads SEMP monitor data for queue depth and bind checks. When `provision_dmq` is enabled, the pipeline uses `{queue}_dmq` as the default per-queue DMQ.
 
 Recommended Solace defaults:
 
@@ -295,8 +349,11 @@ Recommended Solace defaults:
 - Use `PERSISTENT` delivery mode for queue sends.
 - Use exclusive queues for single-consumer point-to-point flows.
 - Use non-exclusive queues for competing consumers.
+- Set a finite `max_redelivery_count` when a DMQ is configured so poison messages have a deterministic path.
+- Set `max_spool_usage_mb` to an explicit capacity for each migrated queue.
 - Use topics only when the migration explicitly requires topic fan-out.
 - Prefer topic hierarchy and queue subscriptions over selectors.
+- Keep SEMP calls below the documented rate guidance through `SOLACE_SEMP_MIN_INTERVAL_SECONDS`.
 
 ### 5. Apply to Boomi
 

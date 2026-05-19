@@ -5,7 +5,50 @@
   "properties": {
     "plan_id": { "type": "string" },
     "migration_version": { "type": "string" },
-    "processes": { "type": "array", "items": { "type": "object" } }
+    "processes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "process_id",
+          "process_name",
+          "source_hash",
+          "send_destination",
+          "receive_destination",
+          "operations"
+        ],
+        "properties": {
+          "process_id": { "type": "string" },
+          "process_name": { "type": "string" },
+          "source_hash": { "type": "string" },
+          "send_destination": { "type": "string" },
+          "receive_destination": { "type": "string" },
+          "queue_access_type": { "enum": ["exclusive", "non-exclusive"] },
+          "queue_permission": { "enum": ["no-access", "read-only", "consume", "modify-topic", "delete"] },
+          "queue_owner": { "type": "string" },
+          "provision_dmq": { "type": "boolean" },
+          "max_redelivery_count": { "type": "integer", "minimum": 0, "maximum": 255 },
+          "max_ttl_seconds": { "type": "integer", "minimum": 0 },
+          "max_spool_usage_mb": { "type": ["integer", "null"], "minimum": 1 },
+          "topic_subscriptions": { "type": "array", "items": { "type": "string" } },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["action", "destination", "destination_type", "delivery_mode"],
+              "properties": {
+                "action": { "enum": ["send", "listen", "get"] },
+                "destination": { "type": "string" },
+                "destination_type": { "enum": ["QUEUE", "TOPIC"] },
+                "delivery_mode": { "enum": ["PERSISTENT", "NON_PERSISTENT"] }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
   },
   "additionalProperties": true
 }

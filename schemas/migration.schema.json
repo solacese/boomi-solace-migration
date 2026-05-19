@@ -8,8 +8,49 @@
     "target_folder_id": { "type": "string", "minLength": 1 },
     "source_connector_types": { "type": "array", "items": { "type": "string" } },
     "connection": { "type": "object" },
-    "defaults": { "type": "object" },
-    "processes": { "type": "array", "items": { "type": "object" } }
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "destination_type": { "enum": ["QUEUE", "TOPIC"] },
+        "delivery_mode": { "enum": ["PERSISTENT", "NON_PERSISTENT"] },
+        "queue_access_type": { "enum": ["exclusive", "non-exclusive"] },
+        "queue_permission": { "enum": ["no-access", "read-only", "consume", "modify-topic", "delete"] },
+        "queue_owner": { "type": "string" },
+        "provision_dmq": { "type": "boolean" },
+        "max_redelivery_count": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "max_ttl_seconds": { "type": "integer", "minimum": 0 },
+        "max_spool_usage_mb": { "type": "integer", "minimum": 1 },
+        "topic_subscriptions": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "processes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "folder_id": { "type": "string" },
+          "target_folder_id": { "type": "string" },
+          "xml_path": { "type": "string" },
+          "send_destination": { "type": "string" },
+          "receive_destination": { "type": "string" },
+          "destination_type": { "enum": ["QUEUE", "TOPIC"] },
+          "delivery_mode": { "enum": ["PERSISTENT", "NON_PERSISTENT"] },
+          "queue_access_type": { "enum": ["exclusive", "non-exclusive"] },
+          "queue_permission": { "enum": ["no-access", "read-only", "consume", "modify-topic", "delete"] },
+          "queue_owner": { "type": "string" },
+          "provision_dmq": { "type": "boolean" },
+          "max_redelivery_count": { "type": "integer", "minimum": 0, "maximum": 255 },
+          "max_ttl_seconds": { "type": "integer", "minimum": 0 },
+          "max_spool_usage_mb": { "type": "integer", "minimum": 1 },
+          "topic_subscriptions": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": true
+      }
+    }
   },
   "additionalProperties": true
 }

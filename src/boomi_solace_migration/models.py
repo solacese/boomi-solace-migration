@@ -30,6 +30,12 @@ def env_or_value(data: dict[str, Any], value_key: str, env_key: str, *, redacted
     return value
 
 
+def optional_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    return int(value)
+
+
 @dataclass(frozen=True)
 class ConnectorProfile:
     name: str
@@ -105,6 +111,12 @@ class ProcessConfig:
     delivery_mode: str
     queue_access_type: str
     provision_dmq: bool
+    topic_subscriptions: tuple[str, ...] = ()
+    queue_permission: str = "consume"
+    queue_owner: str = ""
+    max_redelivery_count: int = 0
+    max_ttl_seconds: int = 0
+    max_spool_usage_mb: int | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], defaults: dict[str, Any], target_folder_id: str) -> ProcessConfig:
@@ -113,6 +125,10 @@ class ProcessConfig:
         if not process_id or not name:
             raise ValueError("Each process requires id and name")
         xml_path_raw = data.get("xml_path")
+        topic_subscriptions_raw = data.get("topic_subscriptions", defaults.get("topic_subscriptions", []))
+        if not isinstance(topic_subscriptions_raw, list):
+            raise ValueError("topic_subscriptions must be a list")
+        max_spool_usage = data.get("max_spool_usage_mb", defaults.get("max_spool_usage_mb"))
         return cls(
             id=process_id,
             name=name,
@@ -125,6 +141,12 @@ class ProcessConfig:
             delivery_mode=str(data.get("delivery_mode") or defaults.get("delivery_mode", "PERSISTENT")).upper(),
             queue_access_type=str(data.get("queue_access_type") or defaults.get("queue_access_type", "exclusive")),
             provision_dmq=bool(data.get("provision_dmq", defaults.get("provision_dmq", True))),
+            topic_subscriptions=tuple(str(item) for item in topic_subscriptions_raw),
+            queue_permission=str(data.get("queue_permission") or defaults.get("queue_permission", "consume")),
+            queue_owner=str(data.get("queue_owner") or defaults.get("queue_owner", "")),
+            max_redelivery_count=int(data.get("max_redelivery_count", defaults.get("max_redelivery_count", 0))),
+            max_ttl_seconds=int(data.get("max_ttl_seconds", defaults.get("max_ttl_seconds", 0))),
+            max_spool_usage_mb=optional_int(max_spool_usage),
         )
 
 
