@@ -94,9 +94,16 @@ def destination_for_process(process: ProcessConfig, policy: NamingPolicy, *, sen
     configured = process.send_destination if send else process.receive_destination
     if configured:
         return configured
-    if process.destination_type == "TOPIC":
+    if destination_type_for_process(process, send=send) == "TOPIC":
         return topic_name_for_process(process, policy)
     return queue_name_for_process(process, policy)
+
+
+def destination_type_for_process(process: ProcessConfig, *, send: bool) -> str:
+    configured = process.send_destination_type if send else process.receive_destination_type
+    if configured:
+        return configured.upper()
+    return process.destination_type.upper()
 
 
 def ddp_to_user_property(ddp: str) -> str:

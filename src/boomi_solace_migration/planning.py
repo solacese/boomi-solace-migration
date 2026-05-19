@@ -15,6 +15,7 @@ from .detect import detect_queue_usage
 from .models import ConnectorProfile, MigrationConfig, NamingPolicy, ProcessConfig
 from .naming import (
     destination_for_process,
+    destination_type_for_process,
     stable_hash,
     validate_queue_name,
     validate_topic_name,
@@ -71,7 +72,9 @@ def build_plan(
                 "process_id": entry["process_id"],
                 "source_hash": entry["source_hash"],
                 "send_destination": entry["send_destination"],
+                "send_destination_type": entry["send_destination_type"],
                 "receive_destination": entry["receive_destination"],
+                "receive_destination_type": entry["receive_destination_type"],
                 "queue_access_type": entry["queue_access_type"],
                 "queue_permission": entry["queue_permission"],
                 "queue_owner": entry["queue_owner"],
@@ -130,21 +133,27 @@ def _plan_process(
     _validate_queue_runtime_settings(process)
     send_destination = destination_for_process(process, naming_policy, send=True)
     receive_destination = destination_for_process(process, naming_policy, send=False)
-    if process.destination_type == "TOPIC":
-        for destination in {send_destination, receive_destination}:
-            topic_issues = validate_topic_name(destination, naming_policy)
-            if topic_issues:
-                raise ValueError(f"{process.id}: invalid topic {destination}: {topic_issues}")
-    else:
-        for destination in {send_destination, receive_destination}:
-            queue_issues = validate_queue_name(destination, naming_policy)
-            if queue_issues:
-                raise ValueError(f"{process.id}: invalid queue {destination}: {queue_issues}")
+    send_destination_type = destination_type_for_process(process, send=True)
+    receive_destination_type = destination_type_for_process(process, send=False)
+    _validate_destination_type(process.id, send_destination_type, "send_destination_type")
+    _validate_destination_type(process.id, receive_destination_type, "receive_destination_type")
+    destinations_by_type: dict[str, list[str]] = {}
+    if "send" in actions:
+        destinations_by_type.setdefault(send_destination_type, []).append(send_destination)
+    if any(action in {"listen", "get"} for action in actions):
+        destinations_by_type.setdefault(receive_destination_type, []).append(receive_destination)
+    for destination in destinations_by_type.get("TOPIC", []):
+        topic_issues = validate_topic_name(destination, naming_policy)
+        if topic_issues:
+            raise ValueError(f"{process.id}: invalid topic {destination}: {topic_issues}")
+    for destination in destinations_by_type.get("QUEUE", []):
+        queue_issues = validate_queue_name(destination, naming_policy)
+        if queue_issues:
+            raise ValueError(f"{process.id}: invalid queue {destination}: {queue_issues}")
         if process.provision_dmq:
-            for destination in {send_destination, receive_destination}:
-                dmq_issues = validate_queue_name(f"{destination}_dmq", naming_policy)
-                if dmq_issues:
-                    raise ValueError(f"{process.id}: invalid DMQ {destination}_dmq: {dmq_issues}")
+            dmq_issues = validate_queue_name(f"{destination}_dmq", naming_policy)
+            if dmq_issues:
+                raise ValueError(f"{process.id}: invalid DMQ {destination}_dmq: {dmq_issues}")
     for subscription in process.topic_subscriptions:
         subscription_issues = validate_topic_subscription(subscription, naming_policy)
         if subscription_issues:
@@ -172,6 +181,7 @@ def _plan_process(
     operations: list[dict[str, Any]] = []
     for action in actions:
         destination = send_destination if action == "send" else receive_destination
+        destination_type = send_destination_type if action == "send" else receive_destination_type
         operation_name = f"{process.name} - {action.title()} {destination} [{short}]"
         operation_xml = build_operation_component_xml(
             action=action,
@@ -179,7 +189,7 @@ def _plan_process(
             folder_id=process.target_folder_id,
             profile=profile,
             destination=destination,
-            destination_type=process.destination_type,
+            destination_type=destination_type,
             delivery_mode=process.delivery_mode,
             metadata=metadata,
         )
@@ -190,7 +200,7 @@ def _plan_process(
             {
                 "action": action,
                 "destination": destination,
-                "destination_type": process.destination_type,
+                "destination_type": destination_type,
                 "delivery_mode": process.delivery_mode,
                 "component_name": operation_name,
                 "xml_path": str(operation_xml_path),
@@ -236,7 +246,9 @@ def _plan_process(
         "ddps": transformed.detection.ddps,
         "ddp_user_properties": transformed.ddp_user_properties,
         "send_destination": send_destination,
+        "send_destination_type": send_destination_type,
         "receive_destination": receive_destination,
+        "receive_destination_type": receive_destination_type,
         "queue_access_type": process.queue_access_type,
         "provision_dmq": process.provision_dmq,
         "topic_subscriptions": list(process.topic_subscriptions),
@@ -271,3 +283,8 @@ def _validate_queue_runtime_settings(process: ProcessConfig) -> None:
         raise ValueError(f"{process.id}: max_ttl_seconds must be greater than or equal to 0")
     if process.max_spool_usage_mb is not None and process.max_spool_usage_mb <= 0:
         raise ValueError(f"{process.id}: max_spool_usage_mb must be greater than 0")
+
+
+def _validate_destination_type(process_id: str, value: str, field_name: str) -> None:
+    if value not in {"QUEUE", "TOPIC"}:
+        raise ValueError(f"{process_id}: {field_name} must be QUEUE or TOPIC")

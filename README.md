@@ -10,7 +10,8 @@ The pipeline is intentionally conservative:
 - Rollback deletes only components recorded in the manifest.
 - Secrets are read from environment variables and are redacted in output.
 - Unknown queue-like connectors and unsupported actions fail closed.
-- Solace queues are the default target for Atom Queue parity.
+- The recommended target is topic publish with durable queue consumption.
+- Direct queue publish is still supported for strict compatibility migrations.
 
 ## Solace Best Practices Encoded
 
@@ -22,7 +23,7 @@ The pipeline follows the Solace guidance in the official best practices, topic a
 - Topic levels reject deployment environments such as `dev`, `qa`, and `prod`, and tracing identifiers such as `traceId` and `spanId`.
 - Custom topic destinations must start with the configured domain prefix by default.
 - Queue names are bounded, deterministic, hash-suffixed, and checked for invalid Solace characters.
-- Atom Queue parity defaults to durable Solace queues with persistent sends.
+- Producers publish to topics by default; consumers bind to durable queues by default.
 - DMQs are provisioned per queue by default with `{queue}_dmq`.
 - Queue provisioning supports explicit access type, permission, owner, max redelivery count, TTL, and message spool limits.
 - Optional queue topic subscriptions are provisioned through SEMP so routing can use topic hierarchy instead of selectors.
@@ -45,8 +46,9 @@ Primary references:
 | Design event topics with a clear domain, noun, verb, and version. | Topic destinations use `domain/noun/verb/version`; the generated noun is a single camelCase level and long nouns are bounded with a stable hash. | `naming.py`, `planning.py`, `tests/test_naming_redaction_retry.py` |
 | Keep topic hierarchies concise and within broker limits. | Published topics fail validation above 250 characters, above 128 levels, with spaces, empty levels, publisher wildcards, or invalid level characters. | `naming-policy.schema.json`, `naming.py`, `planning.py` |
 | Keep deployment topology and tracing metadata out of topic levels. | Environment levels and tracing terms are configured as forbidden values in `naming-policy.yaml`. | `examples/naming-policy.example.yaml`, `naming.py` |
+| Publish events to topics, then attract them to queues with subscriptions. | `send_destination_type` defaults to `TOPIC`; `receive_destination_type` defaults to `QUEUE`; consumer queues can list `topic_subscriptions`. | `models.py`, `planning.py`, `solace_semp.py`, `tests/test_planning_execution.py` |
 | Use topic hierarchy and subscriptions for routing instead of selectors. | Queue topic subscriptions can be listed in `topic_subscriptions` and are provisioned through SEMP. Subscription wildcards are validated before provisioning. | `models.py`, `planning.py`, `solace_semp.py`, `tests/test_solace_semp.py` |
-| Use durable queues for guaranteed delivery and point-to-point compatibility. | `QUEUE` is the default destination type, persistent sends are the default delivery mode, and generated queues are deterministic. | `examples/migration.example.yaml`, `component_builder.py`, `naming.py` |
+| Use durable queues for guaranteed consumer state. | Consumer operations default to `QUEUE`, persistent sends are the default delivery mode, and generated queues are deterministic. | `examples/migration.example.yaml`, `component_builder.py`, `naming.py` |
 | Configure poison-message handling. | `provision_dmq` defaults to true and creates a per-queue `{queue}_dmq`; finite `max_redelivery_count` is supported and validated. | `execution.py`, `solace_semp.py`, `tests/test_solace_semp.py` |
 | Bound queue resource usage. | `max_spool_usage_mb` and `max_ttl_seconds` are plan fields and SEMP queue settings. | `models.py`, `schemas/migration.schema.json`, `solace_semp.py` |
 | Use SEMP v2 config for provisioning and monitor endpoints for runtime checks. | Provisioning writes to `/SEMP/v2/config`; post-provision checks read `/SEMP/v2/monitor` for queue stats and bind visibility. | `solace_semp.py`, `execution.py` |
@@ -205,7 +207,8 @@ connection:
   username_env: SOLACE_CLIENT_USERNAME
   password_env: SOLACE_CLIENT_PASSWORD
 defaults:
-  destination_type: QUEUE
+  send_destination_type: TOPIC
+  receive_destination_type: QUEUE
   delivery_mode: PERSISTENT
   queue_access_type: exclusive
   queue_permission: consume
@@ -220,6 +223,13 @@ processes:
     folder_id: source-folder-guid
     target_folder_id: target-folder-guid
     xml_path: tests/fixtures/producer.xml
+  - id: consumer-process-guid
+    name: Sample Consumer Process
+    folder_id: source-folder-guid
+    target_folder_id: target-folder-guid
+    xml_path: tests/fixtures/listen_consumer.xml
+    topic_subscriptions:
+      - boomi/migration/sampleProducerProcess/published/v1
 ```
 
 For online account inventory, `xml_path` can be omitted after discovery identifies the target process IDs.
@@ -230,8 +240,10 @@ The same runtime fields can be set under `defaults` or overridden per process:
 
 | Field | Default | Purpose |
 |---|---|---|
-| `destination_type` | `QUEUE` | Selects queue or topic operation generation. Queue is the Atom Queue parity mode. |
-| `delivery_mode` | `PERSISTENT` | Uses Solace guaranteed delivery for queue sends. |
+| `send_destination_type` | `TOPIC` | Destination type for migrated producer actions. This is the recommended publish path. |
+| `receive_destination_type` | `QUEUE` | Destination type for migrated consumer actions. This gives consumers durable state. |
+| `destination_type` | unset | Legacy shortcut that sets both send and receive types when the specific fields are omitted. Use only for direct queue or direct topic compatibility modes. |
+| `delivery_mode` | `PERSISTENT` | Uses Solace guaranteed delivery for migrated sends. |
 | `queue_access_type` | `exclusive` | Uses one active consumer by default. Use `non-exclusive` for competing consumers. |
 | `queue_permission` | `consume` | Permission assigned to non-owner clients when the queue is provisioned. |
 | `queue_owner` | empty | Optional Solace client username to own the provisioned queue. Empty leaves ownership with management. |
@@ -240,6 +252,23 @@ The same runtime fields can be set under `defaults` or overridden per process:
 | `max_ttl_seconds` | `0` | Queue maximum TTL in seconds. `0` leaves maximum TTL disabled. |
 | `max_spool_usage_mb` | unset | Optional queue spool quota in MB. The example sets `5000`. |
 | `topic_subscriptions` | `[]` | Topic subscriptions added to queues through SEMP. Use these for routing instead of selectors. |
+
+Recommended mode:
+
+- producers: `send_destination_type: TOPIC`
+- consumers: `receive_destination_type: QUEUE`
+- consumer queue subscriptions: `topic_subscriptions` matching producer topics
+
+In this mode, a producer operation publishes to a Solace topic. A consumer
+operation listens on a durable Solace queue. SEMP then adds the configured
+topic subscriptions to that queue so messages published to matching topics are
+attracted to the queue.
+
+Strict Atom Queue parity mode:
+
+- producers: `send_destination_type: QUEUE`
+- consumers: `receive_destination_type: QUEUE`
+- no queue topic subscriptions required
 
 The naming policy is also part of the runtime contract:
 
@@ -349,6 +378,8 @@ The plan ID is derived from migration version, source XML hashes, connector subt
 The plan also carries the Solace runtime contract for each process:
 
 - destination queue or topic
+- producer destination type
+- consumer destination type
 - queue access type and permission
 - optional queue owner
 - DMQ provisioning flag
@@ -411,13 +442,13 @@ The SEMP preflight and provision command is idempotent:
 
 Recommended Solace defaults:
 
-- Use durable queues for Atom Queue parity.
-- Use `PERSISTENT` delivery mode for queue sends.
+- Publish to topics and consume from durable queues with matching queue subscriptions.
+- Use `PERSISTENT` delivery mode for migrated sends.
 - Use exclusive queues for single-consumer point-to-point flows.
 - Use non-exclusive queues for competing consumers.
 - Set a finite `max_redelivery_count` when a DMQ is configured so poison messages have a deterministic path.
 - Set `max_spool_usage_mb` to an explicit capacity for each migrated queue.
-- Use topics only when the migration explicitly requires topic fan-out.
+- Use direct queue publishing only when strict point-to-point compatibility is required.
 - Prefer topic hierarchy and queue subscriptions over selectors.
 - Keep SEMP calls below the documented rate guidance through `SOLACE_SEMP_MIN_INTERVAL_SECONDS`.
 

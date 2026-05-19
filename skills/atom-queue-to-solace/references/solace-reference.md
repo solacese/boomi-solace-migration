@@ -16,6 +16,10 @@ Solace PubSub+ is an enterprise event broker that supports multiple messaging pr
 - Messages are removed once acknowledged by the consumer
 - Support Dead Message Queue (DMQ) for undeliverable messages
 - CLI: `show queue my-queue`
+- Recommended migration pattern: publish events to topics, then add matching
+  subscriptions to durable queues for consumers
+- Direct queue publishing is supported for strict point-to-point compatibility,
+  but topic-to-queue mapping is more flexible for routing and future reuse
 
 ### Topics
 - **Pub/Sub** destinations using a hierarchical name such as `domain/entity/created`

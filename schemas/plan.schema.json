@@ -14,7 +14,9 @@
           "process_name",
           "source_hash",
           "send_destination",
+          "send_destination_type",
           "receive_destination",
+          "receive_destination_type",
           "operations"
         ],
         "properties": {
@@ -22,7 +24,9 @@
           "process_name": { "type": "string" },
           "source_hash": { "type": "string" },
           "send_destination": { "type": "string" },
+          "send_destination_type": { "enum": ["QUEUE", "TOPIC"] },
           "receive_destination": { "type": "string" },
+          "receive_destination_type": { "enum": ["QUEUE", "TOPIC"] },
           "queue_access_type": { "enum": ["exclusive", "non-exclusive"] },
           "queue_permission": { "enum": ["no-access", "read-only", "consume", "modify-topic", "delete"] },
           "queue_owner": { "type": "string" },

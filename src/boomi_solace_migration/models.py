@@ -111,6 +111,8 @@ class ProcessConfig:
     delivery_mode: str
     queue_access_type: str
     provision_dmq: bool
+    send_destination_type: str = ""
+    receive_destination_type: str = ""
     topic_subscriptions: tuple[str, ...] = ()
     queue_permission: str = "consume"
     queue_owner: str = ""
@@ -129,6 +131,19 @@ class ProcessConfig:
         if not isinstance(topic_subscriptions_raw, list):
             raise ValueError("topic_subscriptions must be a list")
         max_spool_usage = data.get("max_spool_usage_mb", defaults.get("max_spool_usage_mb"))
+        legacy_destination_type = data.get("destination_type", defaults.get("destination_type"))
+        send_destination_type = str(
+            data.get("send_destination_type")
+            or defaults.get("send_destination_type")
+            or legacy_destination_type
+            or "TOPIC"
+        ).upper()
+        receive_destination_type = str(
+            data.get("receive_destination_type")
+            or defaults.get("receive_destination_type")
+            or legacy_destination_type
+            or "QUEUE"
+        ).upper()
         return cls(
             id=process_id,
             name=name,
@@ -137,10 +152,12 @@ class ProcessConfig:
             xml_path=Path(str(xml_path_raw)) if xml_path_raw else None,
             send_destination=str(data.get("send_destination", "")),
             receive_destination=str(data.get("receive_destination", "")),
-            destination_type=str(data.get("destination_type") or defaults.get("destination_type", "QUEUE")).upper(),
+            destination_type=str(legacy_destination_type or receive_destination_type).upper(),
             delivery_mode=str(data.get("delivery_mode") or defaults.get("delivery_mode", "PERSISTENT")).upper(),
             queue_access_type=str(data.get("queue_access_type") or defaults.get("queue_access_type", "exclusive")),
             provision_dmq=bool(data.get("provision_dmq", defaults.get("provision_dmq", True))),
+            send_destination_type=send_destination_type,
+            receive_destination_type=receive_destination_type,
             topic_subscriptions=tuple(str(item) for item in topic_subscriptions_raw),
             queue_permission=str(data.get("queue_permission") or defaults.get("queue_permission", "consume")),
             queue_owner=str(data.get("queue_owner") or defaults.get("queue_owner", "")),

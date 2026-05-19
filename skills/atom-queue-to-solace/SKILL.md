@@ -61,8 +61,10 @@ tracked in a run manifest.
 
 ## Solace Defaults
 
-- Default Atom Queue migrations to durable Solace queues with persistent sends.
-- Use topics only when the migration config explicitly selects `TOPIC`.
+- Default migrated producers to Solace topics with persistent sends.
+- Default migrated consumers to durable Solace queues.
+- Use direct queue publishing only when the migration explicitly requires strict
+  Atom Queue parity.
 - Use `Domain/Noun/Verb/Version` topics, with the noun as one camelCase topic
   level and no deployment environment or trace IDs in topic levels.
 - Prefer topic hierarchy and queue subscriptions over selectors for routing.

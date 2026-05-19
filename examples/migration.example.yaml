@@ -11,7 +11,8 @@ connection:
   username_env: SOLACE_CLIENT_USERNAME
   password_env: SOLACE_CLIENT_PASSWORD
 defaults:
-  destination_type: QUEUE
+  send_destination_type: TOPIC
+  receive_destination_type: QUEUE
   delivery_mode: PERSISTENT
   queue_access_type: exclusive
   queue_permission: consume
@@ -33,3 +34,5 @@ processes:
     target_folder_id: target-folder-guid
     xml_path: tests/fixtures/listen_consumer.xml
     receive_destination: ""
+    topic_subscriptions:
+      - boomi/migration/sampleProducerProcess/published/v1
