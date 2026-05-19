@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["plan_id", "migration_version", "processes"],
+  "properties": {
+    "plan_id": { "type": "string" },
+    "migration_version": { "type": "string" },
+    "processes": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": true
+}

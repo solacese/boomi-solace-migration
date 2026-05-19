@@ -1,0 +1,95 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from boomi_solace_migration.execution import apply_plan, provision_solace_destinations, rollback_manifest
+from boomi_solace_migration.manifest import ManifestStore
+from boomi_solace_migration.models import MigrationConfig
+from boomi_solace_migration.planning import build_plan
+
+
+def _config(tmp_path: Path) -> MigrationConfig:
+    data = {
+        "migration_version": "test",
+        "output_dir": str(tmp_path / "out"),
+        "target_folder_id": "target-folder",
+        "connection": {
+            "host": "smfs://example:55443",
+            "vpn": "default",
+            "username": "user",
+            "password": "pass",
+        },
+        "processes": [
+            {
+                "id": "producer-process",
+                "name": "Sample Producer Process",
+                "folder_id": "source-folder",
+                "target_folder_id": "target-folder",
+                "xml_path": "tests/fixtures/producer.xml",
+            }
+        ],
+    }
+    return MigrationConfig.from_dict(data, base_dir=tmp_path)
+
+
+def test_build_plan_is_deterministic(tmp_path, connector_profile, naming_policy) -> None:  # type: ignore[no-untyped-def]
+    plan1 = build_plan(config=_config(tmp_path), connector_profile=connector_profile, naming_policy=naming_policy)
+    plan2 = build_plan(config=_config(tmp_path), connector_profile=connector_profile, naming_policy=naming_policy)
+    assert plan1["plan_id"] == plan2["plan_id"]
+    assert Path(plan1["processes"][0]["planned_process_xml_path"]).read_text() == Path(
+        plan2["processes"][0]["planned_process_xml_path"]
+    ).read_text()
+
+
+class FakeBoomiClient:
+    def __init__(self) -> None:
+        self.created: list[str] = []
+        self.deleted: list[str] = []
+
+    def create_component(self, xml_body: str) -> str:
+        component_id = f"id-{len(self.created) + 1}"
+        self.created.append(xml_body)
+        return component_id
+
+    def delete_component(self, component_id: str) -> None:
+        self.deleted.append(component_id)
+
+
+def test_apply_plan_with_fake_client_and_rollback(tmp_path, connector_profile, naming_policy) -> None:  # type: ignore[no-untyped-def]
+    plan = build_plan(config=_config(tmp_path), connector_profile=connector_profile, naming_policy=naming_policy)
+    manifest_path = tmp_path / "run-manifest.json"
+    client = FakeBoomiClient()
+    manifest = apply_plan(
+        plan=plan,
+        manifest_path=manifest_path,
+        dry_run=False,
+        client=client,  # type: ignore[arg-type]
+    )
+    assert manifest["entries"][0]["status"] == "success"
+    assert len(client.created) == 3
+
+    rollback = rollback_manifest(
+        manifest_path=manifest_path,
+        dry_run=False,
+        client=client,  # type: ignore[arg-type]
+    )
+    assert [item["component_id"] for item in rollback["deleted"]] == ["id-3", "id-2", "id-1"]
+    assert client.deleted == ["id-3", "id-2", "id-1"]
+
+
+def test_manifest_store_upserts(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    path = tmp_path / "manifest.json"
+    store = ManifestStore(path, plan_id="abc")
+    store.upsert_entry({"process_id": "p1", "status": "running"})
+    store.upsert_entry({"process_id": "p1", "status": "success"})
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert len(data["entries"]) == 1
+    assert data["entries"][0]["status"] == "success"
+
+
+def test_provision_solace_dry_run(tmp_path, connector_profile, naming_policy) -> None:  # type: ignore[no-untyped-def]
+    plan = build_plan(config=_config(tmp_path), connector_profile=connector_profile, naming_policy=naming_policy)
+    result = provision_solace_destinations(plan=plan, dry_run=True)
+    assert result["dry_run"] is True
+    assert result["results"][0]["status"] == "would_validate_or_create"

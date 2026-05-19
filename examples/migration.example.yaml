@@ -1,0 +1,30 @@
+migration_version: "2026.05"
+output_dir: out/example-plan
+target_folder_id: target-folder-guid
+source_connector_types:
+  - atomqueue
+  - queue
+connection:
+  name: shared-solace-connection
+  host_env: SOLACE_HOST
+  vpn_env: SOLACE_MESSAGE_VPN
+  username_env: SOLACE_CLIENT_USERNAME
+  password_env: SOLACE_CLIENT_PASSWORD
+defaults:
+  destination_type: QUEUE
+  delivery_mode: PERSISTENT
+  queue_access_type: exclusive
+  provision_dmq: true
+processes:
+  - id: producer-process
+    name: Sample Producer Process
+    folder_id: source-folder-guid
+    target_folder_id: target-folder-guid
+    xml_path: tests/fixtures/producer.xml
+    send_destination: ""
+  - id: consumer-process
+    name: Sample Consumer Process
+    folder_id: source-folder-guid
+    target_folder_id: target-folder-guid
+    xml_path: tests/fixtures/listen_consumer.xml
+    receive_destination: ""

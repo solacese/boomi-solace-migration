@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "queue": { "type": "object" },
+    "topic": { "type": "object" },
+    "reserved_words": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

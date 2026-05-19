@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["sub_type", "connection_fields", "operation_fields"],
+  "properties": {
+    "name": { "type": "string" },
+    "sub_type": { "type": "string", "minLength": 1 },
+    "display_name": { "type": "string" },
+    "connection_fields": { "type": "object" },
+    "operation_fields": { "type": "object" },
+    "user_properties": { "type": "object" }
+  },
+  "additionalProperties": true
+}

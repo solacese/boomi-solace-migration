@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<bns:Component xmlns:bns="http://api.platform.boomi.com/"
+               componentId="consumer-process"
+               version="2"
+               name="Sample Consumer Process"
+               type="process"
+               folderId="source-folder">
+  <bns:object>
+    <process>
+      <shape shapetype="start" userlabel="Listen on Sample Queue">
+        <connectoraction actionType="Listen"
+                         connectorType="atomqueue"
+                         connectionId="old-conn"
+                         operationId="old-op">
+          <parameters/>
+          <dynamicProperties/>
+        </connectoraction>
+      </shape>
+      <shape shapetype="documentproperties" userlabel="Use Entity DDP">
+        <setproperties>
+          <propertyvalue childKey="DDP_ENTITY_ID" valueType="track">
+            <trackparameter propertyId="dynamicdocument.DDP_ENTITY_ID"
+                            propertyName="Dynamic Document Property - DDP_ENTITY_ID"/>
+          </propertyvalue>
+        </setproperties>
+      </shape>
+    </process>
+  </bns:object>
+</bns:Component>

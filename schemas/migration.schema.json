@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["migration_version", "target_folder_id", "connection", "processes"],
+  "properties": {
+    "migration_version": { "type": "string" },
+    "output_dir": { "type": "string" },
+    "target_folder_id": { "type": "string", "minLength": 1 },
+    "source_connector_types": { "type": "array", "items": { "type": "string" } },
+    "connection": { "type": "object" },
+    "defaults": { "type": "object" },
+    "processes": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": true
+}

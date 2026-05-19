@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "boomi-solace-migration"
+version = "0.1.0"
+description = "Deterministic tooling for migrating Boomi Atom Queue processes to Solace PubSub+."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Solace" }]
+dependencies = [
+  "jsonschema>=4.23",
+  "lxml>=5.2",
+  "PyYAML>=6.0.2",
+  "requests>=2.32",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.13",
+  "pytest>=8.3",
+  "pytest-cov>=5.0",
+  "responses>=0.25",
+  "ruff>=0.7",
+  "types-jsonschema>=4.23",
+  "types-PyYAML>=6.0",
+  "types-requests>=2.32",
+]
+
+[project.scripts]
+boomi-solace = "boomi_solace_migration.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/boomi_solace_migration"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_any_generics = false
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

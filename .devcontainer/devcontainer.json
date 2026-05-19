@@ -1,0 +1,19 @@
+{
+  "name": "boomi-solace-migration",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      },
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff"
+      ]
+    }
+  },
+  "postCreateCommand": "python -m pip install -e '.[dev]'",
+  "remoteUser": "vscode"
+}

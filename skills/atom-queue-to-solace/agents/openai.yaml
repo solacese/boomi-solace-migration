@@ -1,0 +1,3 @@
+display_name: Atom Queue to Solace
+short_description: Plan and run deterministic Boomi Atom Queue to Solace PubSub+ migrations.
+default_prompt: Migrate Boomi Atom Queue processes to Solace PubSub+ using deterministic plans, validation, manifests, and rollback-safe CLI workflows.

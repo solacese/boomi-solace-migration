@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<bns:Component xmlns:bns="http://api.platform.boomi.com/"
+               componentId="get-consumer-process"
+               version="1"
+               name="Sample Polling Consumer"
+               type="process"
+               folderId="source-folder">
+  <bns:object>
+    <process>
+      <shape shapetype="connectoraction" userlabel="Get from Sample Queue">
+        <connectoraction actionType="Get"
+                         connectorType="queue"
+                         connectionId="old-conn"
+                         operationId="old-op">
+          <parameters/>
+          <dynamicProperties/>
+        </connectoraction>
+      </shape>
+    </process>
+  </bns:object>
+</bns:Component>

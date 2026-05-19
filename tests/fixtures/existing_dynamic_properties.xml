@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<bns:Component xmlns:bns="http://api.platform.boomi.com/"
+               componentId="producer-process"
+               version="1"
+               name="Sample Dynamic Property Fixture"
+               type="process"
+               folderId="source-folder">
+  <bns:object>
+    <process>
+      <shape shapetype="connectoraction" userlabel="Send to Sample Queue">
+        <connectoraction actionType="Send"
+                         connectorType="atomqueue"
+                         connectionId="old-conn"
+                         operationId="old-op">
+          <dynamicProperties>
+            <propertyvalue childKey="entityId" key="userProperties"
+                           name="User Properties" valueType="track">
+              <trackparameter propertyId="dynamicdocument.DDP_ENTITY_ID"/>
+            </propertyvalue>
+          </dynamicProperties>
+        </connectoraction>
+      </shape>
+      <shape shapetype="documentproperties" userlabel="Set Entity DDP">
+        <trackparameter propertyId="dynamicdocument.DDP_ENTITY_ID"/>
+      </shape>
+    </process>
+  </bns:object>
+</bns:Component>

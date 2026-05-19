@@ -1,0 +1,12 @@
+jsonschema==4.26.0
+lxml==6.0.2
+mypy==1.19.1
+PyYAML==6.0.2
+pytest==8.4.2
+pytest-cov==6.3.0
+requests==2.33.0
+responses==0.26.0
+ruff==0.15.2
+types-jsonschema==4.26.0.20260518
+types-PyYAML==6.0.12.20260518
+types-requests==2.33.0.20260518

@@ -1,0 +1,24 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<bns:Component xmlns:bns="http://api.platform.boomi.com/"
+               componentId="mixed-process"
+               version="1"
+               name="Sample Pass Through Process"
+               type="process"
+               folderId="source-folder">
+  <bns:object>
+    <process>
+      <shape shapetype="start" userlabel="Listen on Sample Input Queue">
+        <connectoraction actionType="Listen"
+                         connectorType="atomqueue"
+                         connectionId="old-conn"
+                         operationId="old-listen-op"/>
+      </shape>
+      <shape shapetype="connectoraction" userlabel="Send to Sample Output Queue">
+        <connectoraction actionType="Send"
+                         connectorType="atomqueue"
+                         connectionId="old-conn"
+                         operationId="old-send-op"/>
+      </shape>
+    </process>
+  </bns:object>
+</bns:Component>

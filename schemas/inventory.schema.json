@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["processes"],
+  "properties": {
+    "processes": { "type": "array", "items": { "type": "object" } },
+    "generated_at": { "type": "string" }
+  },
+  "additionalProperties": true
+}
