@@ -1,0 +1,20 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<bns:Component xmlns:bns="http://api.platform.boomi.com/" componentId="cons-001" version="2" name="Sample Consumer Process" type="process" folderId="source-folder" folderFullPath="/mpatel/Process 1" createdDate="2024-01-01" modifiedDate="2024-06-01" currentVersion="true">
+  <bns:object>
+    <process>
+      <shapes>
+        <shape shapetype="start" userlabel="Listen on Sample Queue">
+          <connectoraction actionType="listen" connectorType="atomqueue" connectionId="old-conn-002" operationId="old-op-002">
+            <parameters/>
+          </connectoraction>
+        </shape>
+        <shape shapetype="connectoraction" userlabel="Get from Another Queue">
+          <connectoraction actionType="get" connectorType="queue" connectionId="old-conn-003" operationId="old-op-003">
+            <parameters/>
+          </connectoraction>
+        </shape>
+        <shape shapetype="stop" userlabel="End"/>
+      </shapes>
+    </process>
+  </bns:object>
+</bns:Component>

@@ -1,0 +1,49 @@
+boomi:
+  account_id_env: BOOMI_ACCOUNT_ID
+  username_env: BOOMI_USERNAME
+  api_token_env: BOOMI_API_TOKEN
+
+solace_semp:
+  base_url_env: SOLACE_SEMP_BASE_URL
+  message_vpn_env: SOLACE_MESSAGE_VPN
+  username_env: SOLACE_SEMP_USERNAME
+  password_env: SOLACE_SEMP_PASSWORD
+
+connector_profile:
+  sub_type: "officialboomi-solace-pubsubplus"
+  connection_fields:
+    host: "host"
+    vpn: "vpn"
+    username: "clientUsername"
+    password: "clientPassword"
+  operation_fields:
+    destination: "destination"
+    destination_type: "destinationType"
+    delivery_mode: "deliveryMode"
+
+connection:
+  host_env: SOLACE_HOST
+  vpn_env: SOLACE_MESSAGE_VPN
+  username_env: SOLACE_CLIENT_USERNAME
+  password_env: SOLACE_CLIENT_PASSWORD
+
+target_folder_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+source_connector_types:
+  - atomqueue
+  - queue
+
+processes:
+  - id: "abcdef01-2345-6789-abcd-ef0123456789"
+    name: "Order Events Producer"
+    send_destination: "boomi/orders/published/v1"
+    send_destination_type: TOPIC
+    delivery_mode: PERSISTENT
+    provision_queue: false
+
+  - id: "12345678-abcd-ef01-2345-6789abcdef01"
+    name: "Order Events Consumer"
+    receive_destination: "boomi_orders_queue"
+    receive_destination_type: QUEUE
+    delivery_mode: PERSISTENT
+    provision_queue: true
