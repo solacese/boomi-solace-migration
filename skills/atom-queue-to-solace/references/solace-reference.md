@@ -79,46 +79,59 @@ smf://primary-host:55555,smf://backup-host:55555
 
 ---
 
-## Solace SEMP API (Optional Queue Provisioning)
+## Solace SEMP v2 API (Queue Provisioning)
 
-The SEMP (Solace Element Management Protocol) REST API can create and manage broker resources. For Solace Cloud:
+The SEMP (Solace Element Management Protocol) v2 REST API creates and manages broker resources. For production migrations, always use SEMP v2 directly (not the Solace Cloud REST API) — it's the same API regardless of whether the broker is cloud-hosted or on-premises.
 
-### Get services
+### Authentication
 ```
-GET https://api.solace.cloud/api/v2/services
-Authorization: Bearer {api_token}
+Base URL: https://{semp-host}:{port}
+Auth:     Basic (admin username:password)
+Endpoint: /SEMP/v2/config/msgVpns/{vpn-name}/queues
 ```
 
-### Create a queue
+For Solace Cloud: find the SEMP URL in the service's "Manage" tab under "SEMP - REST API".
+
+### Create a queue (idempotent pattern)
 ```
-POST https://api.solace.cloud/api/v2/services/{serviceId}/requests/queues
-Authorization: Bearer {api_token}
+# 1. Check if queue exists
+GET {base}/SEMP/v2/config/msgVpns/{vpn}/queues/{queue_name}
+# Returns 200 if exists, or 400 with NOT_FOUND (not 404!) if it doesn't
+
+# 2. Create if not found
+POST {base}/SEMP/v2/config/msgVpns/{vpn}/queues
 Content-Type: application/json
 
 {
   "queueName": "my_queue",
   "accessType": "exclusive",
-  "permission": "consume",
-  "maxMsgSize": 10000000,
-  "maxMsgSpoolUsage": 1500,
-  "deadMsgQueue": "my_queue_dmq",
-  "maxRedeliveryCount": 5,
-  "redeliveryEnabled": true
+  "egressEnabled": true,
+  "ingressEnabled": true,
+  "permission": "consume"
 }
 ```
+
+> **CRITICAL:** Solace Cloud returns HTTP 400 with `{"meta":{"error":{"status":"NOT_FOUND"}}}` instead of 404. Always parse the response body when status is 400.
+
+> **CRITICAL:** Always set `egressEnabled: true` and `ingressEnabled: true`. Without these, the queue exists but cannot send or receive messages.
 
 ### Add a topic subscription to a queue
 ```
-POST https://api.solace.cloud/api/v2/services/{serviceId}/requests/queues/{queueName}/subscriptions
+POST {base}/SEMP/v2/config/msgVpns/{vpn}/queues/{queueName}/subscriptions
 Content-Type: application/json
 
-{
-  "subscriptionTopic": "domain/entity/>"
-}
+{"subscriptionTopic": "domain/entity/>"}
 ```
 
-For broker-level automation, use SEMP v2 at `https://broker-host:943/SEMP/v2/config`.
-Keep SEMP calls throttled. The CLI defaults to `SOLACE_SEMP_MIN_INTERVAL_SECONDS=0.11`.
+### Rate limiting
+Keep SEMP calls throttled with at least 110ms between requests. The migration tool defaults to `_min_interval = 0.11` seconds. Use exponential backoff on 429/5xx responses.
+
+### URL encoding
+Queue names with special characters must be URL-encoded in path segments:
+```python
+from urllib.parse import quote
+f"/queues/{quote(queue_name, safe='')}"
+```
 
 ---
 

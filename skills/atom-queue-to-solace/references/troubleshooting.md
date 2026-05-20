@@ -1,10 +1,97 @@
 # Troubleshooting: Solace Migration Issues
 
+> These issues were identified and resolved during production migrations of the Culina2 processes. Each section reflects real failures encountered against the Boomi AtomSphere API and Solace Cloud SEMP v2.
+
+---
+
+## Boomi API Gotchas (Critical — Read First)
+
+### Components cannot be deleted via API
+
+**Symptom:** `DELETE /Component/{id}` returns HTTP 400.
+
+**Cause:** The Boomi AtomSphere REST API does not support component deletion. This is an intentional platform limitation.
+
+**Workaround:** Move unwanted components to a cleanup folder (e.g. `_Orphaned (safe to delete)`) using the update endpoint:
+```
+POST /Component/{id}/update
+```
+Set `folderId` to the cleanup folder ID in the XML body. Components can only be deleted via the Boomi UI.
+
+### Server-side read-only attributes cause 400 on component create/update
+
+Strip **all** of these attributes from XML before POST/update:
+- `folderFullPath`, `createdDate`, `createdBy`, `modifiedDate`, `modifiedBy`
+- `currentVersion`, `deleted`, `folderName`, `branchName`, `branchId`
+- `copiedFromComponentId`, `copiedFromComponentVersion`
+
+The last two are commonly missed and cause silent failures on cloned processes.
+
+### SharedCommOverrides and PartnerOverrides cause "ComponentId is invalid" on process creation
+
+**Symptom:** `POST /Component` for a process returns 400 with message like `"ComponentId 742f730b-... is invalid"`.
+
+**Cause:** The original process XML contains `<SharedCommOverrides>` or `<PartnerOverrides>` elements that reference trading partner component IDs. When creating a new process in a different folder, these references may point to components that don't exist or aren't accessible.
+
+**Fix:** Strip all `SharedCommOverrides` and `PartnerOverrides` elements from the process XML before creation:
+```python
+for parent in list(root.iter()):
+    to_remove = [child for child in parent 
+                 if local_name(child.tag) in ("SharedCommOverrides", "PartnerOverrides")]
+    for child in to_remove:
+        parent.remove(child)
+```
+
+### Folder query with empty nestedExpression fails
+
+**Symptom:** `POST /Folder/query` with `{"QueryFilter": {"expression": {"operator": "and", "nestedExpression": []}}}` returns 400 with "Grouping expression must contain at least one simple expression".
+
+**Fix:** Use a concrete expression for folder queries:
+```json
+{"QueryFilter": {"expression": {"argument": ["Solace"], "operator": "EQUALS", "property": "name"}}}
+```
+Or use LIKE for broader searches:
+```json
+{"QueryFilter": {"expression": {"argument": ["%"], "operator": "LIKE", "property": "name"}}}
+```
+
+### Component move/rename uses the update endpoint
+
+There is no dedicated "move" API. To move a component between folders or rename it:
+```
+POST /Component/{id}/update
+Content-Type: application/xml
+```
+Fetch the component XML, change `folderId` and/or `name`, strip read-only attributes, then POST.
+
+### `operationType` for Send is `"CREATE"` not `"EXECUTE"`
+
+**CRITICAL CORRECTION:** The Solace connector's Send operation uses `operationType="CREATE"` — not `"EXECUTE"` with `customOperationType="SEND"` as some documentation suggests. No `customOperationType` attribute at all. Verified in production.
+
+Operation type mapping (confirmed):
+| Action | operationType |
+|--------|--------------|
+| Send   | `CREATE`     |
+| Listen | `Listen`     |
+| Get    | `GET`        |
+
+### `operationType` for Listen must be `"Listen"` (mixed case)
+
+Listen operations use `operationType="Listen"`. Getting this wrong causes the start shape connector to not start. This is the only mixed-case value.
+
+### Folder GUID vs folder path
+
+Always use the actual folder GUID (Base64-encoded ID like `Rjo4NTYyNjIw`) in `folderId`. Path strings are not accepted.
+
+### Boomi auto-appends " 2" to duplicate names
+
+When creating a component with a name that already exists in the same folder, Boomi silently appends ` 2`, ` 3`, etc. to the name. If a previous failed run left orphans, subsequent successful runs will have suffixed names. Clean up orphans and rename via the update endpoint.
+
 ---
 
 ## Connector Discovery Issues
 
-### "No Solace connection components found" during Phase 1b
+### "No Solace connection components found" during discovery
 
 **Cause:** No Solace connector components exist in the account yet.
 
@@ -13,49 +100,59 @@
 2. Name it anything (e.g. "Solace Test")
 3. Save without filling in credentials
 4. Note the component ID from the URL
-5. Run: `GET https://api.boomi.com/api/rest/v1/{accountId}/Component/{id}` with `Accept: application/xml`
+5. Run: `GET /Component/{id}` with `Accept: application/xml`
 6. Copy the `subType` attribute from the root `<bns:Component>` element
-7. Pass that value to the migration skill
 
-### "Solace connector not available" in Boomi Build
+### Connection field IDs vary per account
 
-**Cause:** The Solace connector is not installed in the account.
+**Cause:** Different Solace connector installations use different field IDs in `GenericConnectionConfig`.
 
-**Fix:** Install the Solace PubSub+ connector from the Boomi connector marketplace (Build tab -> Browse Connectors or contact Boomi support). The connector may be under "Tech Partner Connectors" or the Boomi marketplace.
+**Known variants:**
+| Logical field | Variant A | Variant B |
+|---|---|---|
+| Host | `host` | `host` |
+| VPN | `vpn_name` | `vpn` |
+| Username | `username` | `clientUsername` |
+| Password | `password` | `clientPassword` |
 
-### The XML field names in the generated connection component don't match what Boomi expects
-
-**Cause:** The field IDs in `GenericConnectionConfig` (`host`, `vpn`, `clientUsername`, `clientPassword`) are based on common Boomi Solace connector conventions but may differ in your connector version.
-
-**Fix:**
-1. In Phase 1b, the skill returns a `sampleXml` excerpt from an existing Solace connection
-2. Compare the field IDs in that excerpt to the ones in the generated XML
-3. Update the script's `conn_xml` template before running
+**Fix:** Always fetch an existing Solace connection from the target account and read the actual `<field id="...">` values. Define them in a connector profile config rather than hardcoding.
 
 ---
 
 ## Migration Execution Issues
 
-### Migration succeeds but validation fails (connectors missing IDs)
+### Process transform produces "empty connectionId" for WSS/HTTP connectors
 
-**Cause:** Component creation succeeded but the GUIDs weren't substituted correctly in the process XML.
+**Symptom:** Post-transform verification fails with "connectoraction has empty connectionId" on shapes that aren't queue-related.
 
-**Fix:**
-1. Pull the migrated process XML: `GET /Component/{new-process-id}`
-2. Find all `<connectoraction connectorType="[SOLACE_SUBTYPE]">`
-3. Verify each has non-empty `connectionId` and `operationId`
-4. If empty: re-run migration script with the correct subType and component IDs
+**Cause:** Some connector types (WSS Web Server listeners, HTTP client connectors) legitimately have empty `connectionId` fields. They use inline configuration or runtime-provided URLs.
+
+**Fix:** Verification must skip connectors with `connectorType` in (`wss`, `http`, `""`) that have empty `connectionId`. Only assert non-empty IDs for the target Solace connector type.
+
+### Multi-destination processes need per-connection operation mapping
+
+**Symptom:** Process has multiple Send shapes each going to different queues (e.g. 11 different destinations), but all get assigned the same operation ID.
+
+**Cause:** Simple action-type mapping (`send` → one operation) doesn't work when a process routes to multiple destinations via different original connections.
+
+**Fix:** Use `connection_operation_map` — a dict mapping each original `connectionId` to its own new Solace operation ID:
+```python
+connection_operation_map = {
+    "original-conn-id-1": "new-solace-op-for-queue-A",
+    "original-conn-id-2": "new-solace-op-for-queue-B",
+    ...
+}
+```
+Create one Send operation per destination, then map by the original connectionId on each connectoraction element.
 
 ### Component creation returns 400 or 422
-
-**Cause:** Usually malformed XML - bad attribute values, wrong subType, or missing required fields.
 
 **Common causes:**
 - `subType` is incorrect or has extra whitespace
 - Password contains XML-special characters (not escaped as `&amp;`, `&quot;`, etc.)
 - Missing namespace declarations
-
-**Fix:** Check `/tmp/boomi_migrate_solace.log` for the exact error response body. Fix the XML template and retry.
+- Read-only attributes not stripped (see above)
+- SharedCommOverrides referencing invalid components (see above)
 
 ### "No atom queue operations found" for a process you know uses queues
 
@@ -65,7 +162,54 @@
 1. Pull the process XML manually
 2. Search for `<connectoraction` in the XML
 3. Note the exact `connectorType` value
-4. If different (e.g. `'queue-connector'`), update the `detect_queue_ops` function to include that value
+4. If different, add it to `source_connector_types` in the migration config
+
+---
+
+## Solace SEMP API Issues
+
+### Solace Cloud SEMP returns 400 with NOT_FOUND instead of 404
+
+**Symptom:** `GET /SEMP/v2/config/msgVpns/{vpn}/queues/{queue}` returns HTTP 400 (not 404) when the queue doesn't exist.
+
+**Cause:** Solace Cloud's SEMP v2 implementation returns 400 with a JSON body containing `"meta": {"error": {"status": "NOT_FOUND"}}` instead of a standard 404.
+
+**Fix:** Check for NOT_FOUND in both status codes:
+```python
+def _is_not_found(self, response):
+    if response.status_code == 404:
+        return True
+    if response.status_code == 400:
+        try:
+            status = response.json().get("meta", {}).get("error", {}).get("status", "")
+            return status == "NOT_FOUND"
+        except (ValueError, KeyError, AttributeError):
+            pass
+    return False
+```
+
+### SEMP queue creation requires explicit ingress/egress enabled
+
+**Symptom:** Queue created successfully but messages can't be sent to or consumed from it.
+
+**Fix:** Always set both flags when creating queues:
+```json
+{
+  "queueName": "my_queue",
+  "accessType": "exclusive",
+  "egressEnabled": true,
+  "ingressEnabled": true,
+  "permission": "consume"
+}
+```
+
+### SEMP URL-encode queue names
+
+Queue names with special characters must be URL-encoded in SEMP paths:
+```python
+from urllib.parse import quote
+url = f"{base}/SEMP/v2/config/msgVpns/{quote(vpn, safe='')}/queues/{quote(queue_name, safe='')}"
+```
 
 ---
 
@@ -73,10 +217,9 @@
 
 ### Process runs but fails to connect to Solace broker
 
-**Symptoms:** Process executes but the Solace connector shape fails with a connection error.
-
 **Checklist:**
 - Verify `host` URL is correct and the port is open from the Boomi Atom's network
+- For Solace Cloud: use `tcps://mr-xxxx.messaging.solace.cloud:55443` (TLS required)
 - Verify Message VPN name matches exactly (case-sensitive)
 - Verify client username and password
 - Verify the Boomi Atom can reach the Solace host (network/firewall rules)
@@ -86,7 +229,7 @@
 
 **Cause:** The Solace destination doesn't exist on the broker.
 
-**Fix:** Create the queue or topic endpoint in Solace Cloud Console or via SEMP before running the process.
+**Fix:** Provision queues via SEMP or Solace Console BEFORE deploying the migrated process. The migration tool can auto-provision via `provision_queue: true` in the config.
 
 ### Messages sent but consumer receives nothing
 
@@ -94,19 +237,18 @@
 - Producer is sending to a queue, consumer is subscribing to a different destination
 - Producer is sending DIRECT delivery - no persistence; consumer wasn't ready
 - Queue access type mismatch (Exclusive queue already has a different consumer bound)
+- `ingressEnabled` or `egressEnabled` is false on the queue
 
 **Fix:**
 - Verify send and receive destination names match exactly
 - Use `PERSISTENT` delivery mode for queues
-- Check Solace Console -> queue details -> "Consumers" tab for bound consumers
+- Check Solace Console → queue details → "Consumers" tab
 
 ---
 
 ## DDP Migration Issues
 
 ### DDPs not propagating after migration
-
-**Symptom:** Consumer process doesn't receive the expected DDP values.
 
 **Root cause:** DDPs require explicit mapping on both sides.
 
@@ -116,30 +258,19 @@
 3. Set Properties uses `valueType="connector"` with `connectorSource="User Properties"`
 4. Property names match exactly (camelCase on producer, original DDP name on consumer)
 
-### DDP names differ from expected camelCase
-
-**Cause:** The conversion strips `DDP_` prefix then camelCases. DDPs without that prefix produce unexpected results.
-
-**Fix:** Inspect the `ddpsMigrated` list in the migration output. Manually verify the `childKey` values match what the consumer expects.
-
 ---
 
-## Boomi API Gotchas (General)
+## Post-Migration Organization
 
-### `operationType` for Listen must be `"Listen"` not `"EXECUTE"`
+### Place migrated components in dedicated folders
 
-Listen operations use `operationType="Listen"` (mixed case). All other operations use `operationType="EXECUTE"`. Getting this wrong causes the start shape connector to not start.
+After migration, organize components into per-process folders matching the source structure:
+```
+Culina/
+├── Process 1/              (original components)
+├── Process 1 - Solace/     (connection + operations + process)
+├── Process 2/              (original components)
+└── Process 2 - Solace/     (connection + operations + process)
+```
 
-### Folder GUID vs folder path
-
-Always use the actual folder GUID in `folderId`. The Boomi API does not accept folder path strings.
-
-### Server-side attributes cause 400 on component create
-
-Strip these attributes from cloned XML before posting: `folderFullPath`, `createdDate`, `createdBy`, `modifiedDate`, `modifiedBy`, `currentVersion`, `deleted`, `folderName`, `branchName`, `branchId`.
-
-### XML special characters in passwords or names
-
-Escape: `&` -> `&amp;`, `"` -> `&quot;`, `<` -> `&lt;`, `>` -> `&gt;`
-
-The migration script calls `escape_xml()` on all user-supplied strings. If you edit the script manually, ensure escaping is applied.
+Move components via `POST /Component/{id}/update` with updated `folderId`. Keep one connection per process folder (or share across processes in the same folder if they use the same broker/VPN/credentials).

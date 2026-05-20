@@ -2,7 +2,7 @@
 
 All Boomi component XML must be wrapped in the `bns:Component` envelope. The `componentId` is assigned by the API on creation - leave it empty when posting. All namespace declarations are required.
 
-> **Important:** The `subType` value for the Solace connector is discovered dynamically in Phase 1b of the migration skill. Replace `[SOLACE_SUBTYPE]` in all templates with the value extracted from your account. The field IDs inside `GenericConnectionConfig` and `GenericOperationConfig` are based on common Boomi Solace connector conventions - verify them against the sample XML returned in Phase 1b and adjust if needed.
+> **Important:** The `subType` value and connection field IDs vary per account/connector installation. Discover them by fetching an existing Solace connection component from the target account. Do NOT assume field IDs — they must be read from a real component.
 
 ---
 
@@ -24,6 +24,8 @@ All Boomi component XML must be wrapped in the `bns:Component` envelope. The `co
 
 ## Solace Connection Component
 
+> **Field IDs are account-specific.** The example below uses field IDs observed in the Culina2 migration (`host`, `vpn_name`, `username`, `password`). Other accounts may use `vpn`, `clientUsername`, `clientPassword`. Always discover field IDs from an existing component before building XML.
+
 ```xml
 <?xml version='1.0' encoding='UTF-8'?>
 <bns:Component xmlns:bns="http://api.platform.boomi.com/"
@@ -36,50 +38,54 @@ All Boomi component XML must be wrapped in the `bns:Component` envelope. The `co
                folderId="[folder-guid]">
   <bns:encryptedValues>
     <bns:encryptedValue isSet="true"
-                        path="//GenericConnectionConfig/field[@id='clientPassword']"/>
+                        path="//GenericConnectionConfig/field[@id='[PASSWORD_FIELD_ID]']"/>
   </bns:encryptedValues>
+  <bns:description></bns:description>
   <bns:object>
     <GenericConnectionConfig>
-      <field id="host"           type="string"   value="smf://hostname:55555"/>
-      <field id="vpn"            type="string"   value="default"/>
-      <field id="clientUsername" type="string"   value="my-username"/>
-      <field id="clientPassword" type="password" value="my-password"/>
+      <field id="[HOST_FIELD_ID]"     type="string"   value="tcps://mr-xxxx.messaging.solace.cloud:55443"/>
+      <field id="[VPN_FIELD_ID]"      type="string"   value="my-vpn"/>
+      <field id="[USERNAME_FIELD_ID]" type="string"   value="solace-cloud-client"/>
+      <field id="[PASSWORD_FIELD_ID]" type="password" value="my-password"/>
     </GenericConnectionConfig>
   </bns:object>
 </bns:Component>
 ```
 
 Key fields:
-- `host`: SMF URL - `smf://host:55555` (plain) or `smfs://host:55443` (TLS)
-- `vpn`: Solace Message VPN name
-- `clientUsername` / `clientPassword`: Solace client credentials
-- The `<bns:encryptedValue>` block tells Boomi to encrypt the password on push
+- Host: SMF URL — `smf://host:55555` (plain) or `tcps://host:55443` (TLS/Solace Cloud)
+- VPN: Solace Message VPN name
+- Username / Password: Solace client credentials
+- The `<bns:encryptedValue>` block tells Boomi to encrypt the password on save
+- **Always use a `connector-profile.yaml` or similar config to map logical field names to actual field IDs**
 
 ---
 
 ## Send (Publish) Operation Component
 
+> **CORRECTED from production:** Send operations use `operationType="CREATE"` (not `"EXECUTE"` with `customOperationType`). No `customOperationType` attribute. Field IDs are `mode`, `endpointType`, `destination`.
+
 ```xml
 <?xml version='1.0' encoding='UTF-8'?>
 <bns:Component xmlns:bns="http://api.platform.boomi.com/"
                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                componentId=""
                version="1"
-               name="[Name] - Send to [destination]"
+               name="[Name] - Solace Send [destination]"
                type="connector-action"
                subType="[SOLACE_SUBTYPE]"
                folderId="[folder-guid]">
   <bns:encryptedValues/>
   <bns:description></bns:description>
   <bns:object>
-    <Operation xmlns="" returnApplicationErrors="false" trackResponse="false">
+    <Operation returnApplicationErrors="false" trackResponse="false">
       <Archiving directory="" enabled="false"/>
       <Configuration>
-        <GenericOperationConfig customOperationType="SEND" operationType="EXECUTE"
-                                requestProfileType="binary" responseProfileType="none">
-          <field id="destination"     type="string" value="[queue-or-topic-name]"/>
-          <field id="destinationType" type="string" value="QUEUE"/>
-          <field id="deliveryMode"    type="string" value="PERSISTENT"/>
+        <GenericOperationConfig operationType="CREATE"
+                                requestProfileType="binary" responseProfileType="binary">
+          <field id="mode"         type="string" value="PERSISTENT"/>
+          <field id="endpointType" type="string" value="queue"/>
+          <field id="destination"  type="string" value="[queue-or-topic-name]"/>
           <Options/>
         </GenericOperationConfig>
       </Configuration>
@@ -91,35 +97,43 @@ Key fields:
 ```
 
 Key fields:
-- `customOperationType="SEND"`, `operationType="EXECUTE"`
-- `requestProfileType="binary"`, `responseProfileType="none"`
-- `destinationType`: `QUEUE` (reliable) or `TOPIC` (pub/sub)
-- `deliveryMode`: `PERSISTENT` (default), `NON_PERSISTENT`, or `DIRECT`
+- `operationType="CREATE"` — this is the actual value for Send operations (not `"EXECUTE"`)
+- No `customOperationType` attribute
+- `requestProfileType="binary"`, `responseProfileType="binary"` (both binary)
+- `mode`: `PERSISTENT` (default), `NON_PERSISTENT`, or `DIRECT`
+- `endpointType`: `queue` or `topic` (lowercase)
+- `destination`: queue or topic name
 
 ---
 
 ## Listen Operation Component
 
+> **CORRECTED from production:** Listen operations use `operationType="Listen"` (mixed case). Fields include `mode`, `destination`, `batchSize`, `receiveTimeout`, `maxConcurrentExecutions`, `selector`.
+
 ```xml
 <?xml version='1.0' encoding='UTF-8'?>
 <bns:Component xmlns:bns="http://api.platform.boomi.com/"
                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                componentId=""
                version="1"
-               name="[Name] - Listen on [destination]"
+               name="[Name] - Solace Listen [destination]"
                type="connector-action"
                subType="[SOLACE_SUBTYPE]"
                folderId="[folder-guid]">
   <bns:encryptedValues/>
   <bns:description></bns:description>
   <bns:object>
-    <Operation xmlns="" returnApplicationErrors="false" trackResponse="true">
+    <Operation returnApplicationErrors="false" trackResponse="true">
       <Archiving directory="" enabled="false"/>
       <Configuration>
-        <GenericOperationConfig customOperationType="LISTEN" operationType="Listen"
-                                requestProfileType="none" responseProfileType="binary">
-          <field id="destination"     type="string" value="[queue-or-topic-name]"/>
-          <field id="destinationType" type="string" value="QUEUE"/>
+        <GenericOperationConfig operationType="Listen"
+                                requestProfileType="binary" responseProfileType="binary">
+          <field id="mode"                     type="string"  value="PERSISTENT_TRANSACTED"/>
+          <field id="destination"              type="string"  value="[queue-name]"/>
+          <field id="batchSize"                type="integer" value="500"/>
+          <field id="receiveTimeout"           type="integer" value="10000"/>
+          <field id="maxConcurrentExecutions"  type="integer" value="3"/>
+          <field id="selector"                 type="string"  value=""/>
           <Options/>
         </GenericOperationConfig>
       </Configuration>
@@ -131,34 +145,41 @@ Key fields:
 ```
 
 Key fields:
-- `operationType="Listen"` - **must be mixed case**, not `"EXECUTE"` (critical)
-- `requestProfileType="none"`, `responseProfileType="binary"`
-- `destinationType`: `QUEUE` for queue-based listening, `TOPIC` for topic subscription
+- `operationType="Listen"` — **must be mixed case** (critical, not `"EXECUTE"`)
+- No `customOperationType` attribute
+- `requestProfileType="binary"`, `responseProfileType="binary"` (both binary)
+- `mode`: `PERSISTENT_TRANSACTED` for guaranteed delivery with transaction support
+- `batchSize`: messages per batch (default 500)
+- `receiveTimeout`: milliseconds to wait for messages (default 10000)
+- `maxConcurrentExecutions`: parallel listener threads (default 3)
+- `selector`: JMS selector expression (empty string = no filtering)
 
 ---
 
 ## Get/Receive Operation Component
 
+> **CORRECTED from production:** Get operations use `operationType="GET"`. No `customOperationType` attribute.
+
 ```xml
 <?xml version='1.0' encoding='UTF-8'?>
 <bns:Component xmlns:bns="http://api.platform.boomi.com/"
                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                componentId=""
                version="1"
-               name="[Name] - Receive from [destination]"
+               name="[Name] - Solace Receive [destination]"
                type="connector-action"
                subType="[SOLACE_SUBTYPE]"
                folderId="[folder-guid]">
   <bns:encryptedValues/>
   <bns:description></bns:description>
   <bns:object>
-    <Operation xmlns="" returnApplicationErrors="false" trackResponse="true">
+    <Operation returnApplicationErrors="false" trackResponse="true">
       <Archiving directory="" enabled="false"/>
       <Configuration>
-        <GenericOperationConfig customOperationType="GET" operationType="EXECUTE"
-                                requestProfileType="none" responseProfileType="binary">
-          <field id="destination"     type="string" value="[queue-name]"/>
-          <field id="destinationType" type="string" value="QUEUE"/>
+        <GenericOperationConfig operationType="GET"
+                                requestProfileType="binary" responseProfileType="binary">
+          <field id="mode"        type="string" value="PERSISTENT_TRANSACTED"/>
+          <field id="destination" type="string" value="[queue-name]"/>
           <Options/>
         </GenericOperationConfig>
       </Configuration>
@@ -170,9 +191,10 @@ Key fields:
 ```
 
 Key fields:
-- `customOperationType="GET"`, `operationType="EXECUTE"`
-- `requestProfileType="none"`, `responseProfileType="binary"`
-- `destinationType`: typically `QUEUE` for polling
+- `operationType="GET"` (not `"EXECUTE"`)
+- No `customOperationType` attribute
+- `requestProfileType="binary"`, `responseProfileType="binary"` (both binary)
+- `mode`: `PERSISTENT_TRANSACTED` for guaranteed delivery
 
 ---
 

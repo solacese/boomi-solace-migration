@@ -176,9 +176,78 @@ After a successful migration, the engineer must:
 
 ---
 
+## Multi-Destination Routing (Per-Connection Operation Mapping)
+
+Some processes route messages to multiple different queues via multiple connector
+steps, each using a different original connection (and thus a different queue
+destination). A simple "one Send operation" approach won't work here.
+
+### Problem
+Process 2 (SCE Routing) has 11 Send connector shapes, each with a different
+`connectionId` pointing to a different Atom Queue. After migration, each must
+Send to a different Solace queue.
+
+### Solution: `operation_mappings`
+Create one Solace Send operation per destination, then map each original
+`connectionId` to its corresponding new operation:
+
+```yaml
+processes:
+  - id: "69484026-120f-473a-9a5f-f74f8323d2c0"
+    name: "SCE Routing Process"
+    provision_queue: true
+    operation_mappings:
+      - original_connection_id: "6f53dde3-d888-441f-919f-20fb3e659c17"
+        destination: "SCE_ASN_Queue"
+        destination_type: QUEUE
+        delivery_mode: PERSISTENT
+      - original_connection_id: "7ef67a2d-6c09-4c3f-a34b-a26adb887f24"
+        destination: "SCE_DNH_Queue"
+        destination_type: QUEUE
+        delivery_mode: PERSISTENT
+      # ... one entry per connector
+```
+
+During transform, build a `connection_operation_map`:
+```python
+connection_operation_map = {
+    "original-conn-id": "new-solace-operation-id",
+    ...
+}
+```
+
+The transform uses this map to assign the correct operationId per connector step
+based on the original connectionId, rather than a blanket action-type mapping.
+
+### Shared Connection
+All operations share a single Solace connection (same broker/VPN/credentials).
+Only the operation (destination) differs per connector step.
+
+---
+
+## Post-Migration Folder Organization
+
+Migrated components should mirror the source folder structure:
+
+```
+Parent Folder/
+├── Process 1/                    (original components — untouched)
+├── Process 1 - Solace/           (migrated: connection + operations + process)
+├── Process 2/                    (original components — untouched)
+├── Process 2 - Solace/           (migrated: connection + operations + process)
+└── _Orphaned (safe to delete)/   (failed-run leftovers)
+```
+
+Use `POST /Component/{id}/update` to move components between folders.
+
+---
+
 ## Known Limitations
 
 - DDP propagation through conditional branches needs manual validation on the consumer side
-- Solace topic hierarchies use `/` separators (e.g. `domain/entity`) - the skill uses flat names; adjust if your Solace architecture uses hierarchy
-- On-premises Solace brokers may use different ports or require SSL certificate configuration not covered by the basic XML templates
-- The Boomi Solace connector's exact XML field names are discovered dynamically in Phase 1b - if the discovered field names differ from the templates, adapt before running
+- Solace topic hierarchies use `/` separators (e.g. `domain/entity`) — adjust if your Solace architecture uses hierarchy
+- On-premises Solace brokers may use different ports or require SSL certificate configuration
+- Connection field IDs (`host`, `vpn_name`, etc.) vary per Solace connector installation — always discover from an existing component
+- Boomi API cannot delete components — orphans from failed runs must be moved to a cleanup folder via the UI or update endpoint
+- Processes with `SharedCommOverrides` or `PartnerOverrides` will fail creation if those references are not stripped
+- WSS and HTTP connectors have empty `connectionId` by design — verification must skip them
