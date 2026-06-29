@@ -8,7 +8,7 @@ from typing import Any
 
 from .boomi_client import BoomiClient
 from .detect import detect_queue_usage
-from .execution import apply_plan, provision_solace_destinations, rollback_manifest
+from .execution import apply_plan, provision_solace_access_control, provision_solace_destinations, rollback_manifest
 from .manifest import load_manifest
 from .models import ConnectorProfile, MigrationConfig, NamingPolicy, load_yaml
 from .planning import build_plan, load_plan
@@ -42,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     plan = sub.add_parser("plan", help="Generate a deterministic offline migration plan")
     add_config_args(plan)
+    plan.add_argument("--summary", action="store_true", help="Print human-readable plan summary")
     plan.set_defaults(func=cmd_plan)
 
     pipeline = sub.add_parser("pipeline", help="Run the safe Solace migration pipeline")
@@ -74,6 +75,14 @@ def build_parser() -> argparse.ArgumentParser:
     provision.add_argument("--dry-run", action="store_true")
     provision.set_defaults(func=cmd_provision_solace)
 
+    run = sub.add_parser("run", help="Run the full migration: plan → provision → apply → report")
+    add_config_args(run)
+    run.add_argument("--manifest", default="run-manifest.json")
+    run.add_argument("--dry-run", action="store_true")
+    run.add_argument("--skip-provision", action="store_true", help="Skip Solace provisioning")
+    run.add_argument("--report-output", default="migration-report.md")
+    run.set_defaults(func=cmd_run)
+
     report = sub.add_parser("report", help="Generate markdown or JSON report from a manifest")
     report.add_argument("--manifest", required=True)
     report.add_argument("--output", required=True)
@@ -81,18 +90,68 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+DEFAULT_NAMING_POLICY: dict[str, Any] = {
+    "queue": {
+        "prefix": "boomi",
+        "separator": "_",
+        "max_length": 80,
+        "solace_max_length": 200,
+        "case": "lower",
+        "collision_hash_length": 8,
+        "allowed_pattern": "^[a-z0-9_.-]+$",
+    },
+    "topic": {
+        "separator": "/",
+        "max_length": 250,
+        "max_levels": 128,
+        "case": "camel",
+        "collision_hash_length": 8,
+        "domain": "boomi/migration",
+        "verb": "published",
+        "version": "v1",
+        "taxonomy": "Domain/Noun/Verb/Version/Properties",
+        "allowed_level_pattern": "^[A-Za-z0-9]+$",
+        "require_domain_prefix": True,
+        "allow_subscription_exceptions": False,
+        "forbidden_levels": ["dev", "qa", "prod", "production", "staging"],
+        "forbidden_terms": ["traceid", "spanid", "trace"],
+    },
+    "reserved_words": ["#DEAD_MSG_QUEUE", "default"],
+}
+
+
 def add_config_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", required=True)
-    parser.add_argument("--connector-profile", required=True)
-    parser.add_argument("--naming-policy", required=True)
+    parser.add_argument(
+        "--connector-profile", default="",
+        help="Path to connector profile YAML (optional if inline in config)",
+    )
+    parser.add_argument(
+        "--naming-policy", default="",
+        help="Path to naming policy YAML (optional — uses built-in defaults)",
+    )
 
 
 def load_inputs(args: argparse.Namespace) -> tuple[MigrationConfig, ConnectorProfile, NamingPolicy]:
-    return (
-        MigrationConfig.from_yaml(args.config),
-        ConnectorProfile.from_yaml(args.connector_profile),
-        NamingPolicy.from_yaml(args.naming_policy),
-    )
+    config = MigrationConfig.from_yaml(args.config)
+    # Connector profile: CLI arg > inline in config > error
+    if args.connector_profile:
+        connector_profile = ConnectorProfile.from_yaml(args.connector_profile)
+    elif config.inline_connector_profile:
+        connector_profile = ConnectorProfile.from_dict(config.inline_connector_profile)
+    else:
+        raise ValueError(
+            "Connector profile required: provide --connector-profile or include "
+            "connector_profile section in the migration config"
+        )
+    # Naming policy: CLI arg > inline in config > built-in defaults
+    if args.naming_policy:
+        naming_policy = NamingPolicy.from_yaml(args.naming_policy)
+    elif config.inline_naming_policy:
+        naming_policy = NamingPolicy.from_dict(config.inline_naming_policy)
+    else:
+        naming_policy = NamingPolicy.from_dict(DEFAULT_NAMING_POLICY)
+    return (config, connector_profile, naming_policy)
 
 
 def cmd_discover(args: argparse.Namespace) -> None:
@@ -151,6 +210,8 @@ def cmd_plan(args: argparse.Namespace) -> None:
     plan = build_plan(config=config, connector_profile=profile, naming_policy=naming_policy)
     print(config.output_dir / "migration-plan.json")
     print(f"plan_id={plan['plan_id']}")
+    if getattr(args, "summary", False):
+        _print_plan_summary(plan)
 
 
 def cmd_pipeline(args: argparse.Namespace) -> None:
@@ -176,6 +237,8 @@ def cmd_pipeline(args: argparse.Namespace) -> None:
     print(f"plan_id={plan['plan_id']}")
 
     if args.provision_solace:
+        access_control_result = provision_solace_access_control(plan=plan, dry_run=bool(args.dry_run))
+        print(json.dumps(redact({"solace_access_control": access_control_result}), indent=2, sort_keys=True))
         provision_result = provision_solace_destinations(plan=plan, dry_run=bool(args.dry_run))
         print(json.dumps(redact({"solace": provision_result}), indent=2, sort_keys=True))
 
@@ -225,8 +288,86 @@ def cmd_rollback(args: argparse.Namespace) -> None:
 
 def cmd_provision_solace(args: argparse.Namespace) -> None:
     plan = load_plan(args.plan)
+    access_control_result = provision_solace_access_control(plan=plan, dry_run=bool(args.dry_run))
+    print(json.dumps(redact(access_control_result), indent=2, sort_keys=True))
     result = provision_solace_destinations(plan=plan, dry_run=bool(args.dry_run))
     print(json.dumps(redact(result), indent=2, sort_keys=True))
+
+
+def cmd_run(args: argparse.Namespace) -> None:
+    """Full migration pipeline: plan → provision access control → provision queues → apply → report."""
+    config, profile, naming_policy = load_inputs(args)
+    issues: list[ValidationIssue] = []
+    issues.extend(validate_json_schema(load_yaml(args.config), REPO_ROOT / "schemas/migration.schema.json"))
+    fail_on_issues(issues)
+
+    # 1. Plan
+    plan = build_plan(config=config, connector_profile=profile, naming_policy=naming_policy)
+    plan_path = config.output_dir / "migration-plan.json"
+    print(f"✓ plan generated: {plan_path}")
+    print(f"  plan_id={plan['plan_id']}")
+
+    # 2. Summary
+    _print_plan_summary(plan)
+
+    # 3. Provision Solace (unless skipped)
+    if not args.skip_provision:
+        ac_result = provision_solace_access_control(plan=plan, dry_run=bool(args.dry_run))
+        _print_provision_summary("access_control", ac_result)
+        provision_result = provision_solace_destinations(plan=plan, dry_run=bool(args.dry_run))
+        _print_provision_summary("queues", provision_result)
+    else:
+        print("  ⊘ Solace provisioning skipped")
+
+    # 4. Apply to Boomi
+    apply_result = apply_plan(
+        plan=plan,
+        manifest_path=args.manifest,
+        dry_run=bool(args.dry_run),
+    )
+    successes = sum(1 for e in apply_result.get("entries", []) if e.get("status") == "success")
+    failures = sum(1 for e in apply_result.get("entries", []) if e.get("status") == "failed")
+    print(f"✓ apply complete: {successes} succeeded, {failures} failed")
+
+    # 5. Report
+    if not args.dry_run:
+        manifest = load_manifest(args.manifest)
+        write_report(manifest, args.report_output)
+        print(f"✓ report: {args.report_output}")
+    else:
+        print("  (dry-run — no report generated)")
+
+
+def _print_plan_summary(plan: dict[str, Any]) -> None:
+    """Print a human-readable summary of the migration plan."""
+    print("\n┌─ Migration Plan Summary ─────────────────────────────────")
+    print(f"│ Processes: {len(plan['processes'])}")
+    for proc in plan["processes"]:
+        ops = ", ".join(f"{op['action']}→{op['destination']}" for op in proc["operations"])
+        owner_info = f" [owner={proc.get('queue_owner')}]" if proc.get("queue_owner") else ""
+        print(f"│   • {proc['process_name']}: {ops}{owner_info}")
+    print("└──────────────────────────────────────────────────────────\n")
+
+
+def _print_provision_summary(label: str, result: dict[str, Any]) -> None:
+    if result.get("skipped"):
+        print(f"  ⊘ {label}: {result['skipped']}")
+        return
+    items = result.get("results", [])
+    created = sum(1 for r in items if r.get("status") == "created")
+    exists = sum(1 for r in items if r.get("status") == "exists")
+    updated = sum(1 for r in items if r.get("status") == "updated")
+    dry_count = sum(1 for r in items if "would_" in r.get("status", ""))
+    parts = []
+    if created:
+        parts.append(f"{created} created")
+    if exists:
+        parts.append(f"{exists} existing")
+    if updated:
+        parts.append(f"{updated} updated")
+    if dry_count:
+        parts.append(f"{dry_count} would-create")
+    print(f"✓ {label}: {', '.join(parts) or 'none'}")
 
 
 def cmd_report(args: argparse.Namespace) -> None:

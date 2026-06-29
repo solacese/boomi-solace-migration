@@ -100,6 +100,12 @@ Create working copies from the examples:
 ```bash
 cp .env.example .env
 cp examples/migration.example.yaml migration.yaml
+```
+
+The migration config now supports **inline** `connector_profile` and `naming_policy` sections, eliminating the need for separate files. If you prefer separate files, they still work via `--connector-profile` and `--naming-policy` flags. When omitting `--naming-policy`, built-in defaults are used automatically.
+
+```bash
+# Legacy 3-file mode (still supported):
 cp examples/connector-profile.example.yaml connector-profile.yaml
 cp examples/naming-policy.example.yaml naming-policy.yaml
 ```
@@ -285,39 +291,41 @@ The naming policy is also part of the runtime contract:
 
 ## Pipeline Steps
 
+### Quick Start: Single Command
+
+The `run` command chains all steps: plan → provision access control → provision queues → apply → report:
+
+```bash
+boomi-solace run --config migration.yaml --dry-run
+```
+
+When satisfied with the dry-run output:
+
+```bash
+boomi-solace run --config migration.yaml
+```
+
 ### Safe Pipeline Entry Point
 
 For controlled execution, use the `pipeline` command. By default it validates inputs, generates the deterministic plan, and stops before any Boomi write:
 
 ```bash
-boomi-solace pipeline \
-  --config migration.yaml \
-  --connector-profile connector-profile.yaml \
-  --naming-policy naming-policy.yaml
+boomi-solace pipeline --config migration.yaml
 ```
 
 Run the same pipeline with Solace preflight in dry-run mode:
 
 ```bash
-boomi-solace pipeline \
-  --config migration.yaml \
-  --connector-profile connector-profile.yaml \
-  --naming-policy naming-policy.yaml \
-  --provision-solace \
-  --dry-run
+boomi-solace pipeline --config migration.yaml --provision-solace --dry-run
 ```
 
 Apply through the pipeline only after reviewing generated XML and the plan:
 
 ```bash
-boomi-solace pipeline \
-  --config migration.yaml \
-  --connector-profile connector-profile.yaml \
-  --naming-policy naming-policy.yaml \
-  --provision-solace \
-  --apply \
-  --manifest run-manifest.json
+boomi-solace pipeline --config migration.yaml --provision-solace --apply --manifest run-manifest.json
 ```
+
+Note: `--connector-profile` and `--naming-policy` flags are optional when using inline config sections.
 
 ### 1. Discover
 
@@ -429,6 +437,15 @@ boomi-solace provision-solace \
 ```
 
 The Solace step validates or creates queue resources for planned queue destinations, applies optional queue topic subscriptions, and reads SEMP monitor data for queue depth and bind checks. When `provision_dmq` is enabled, the pipeline uses `{queue}_dmq` as the default per-queue DMQ.
+
+When `queue_owner` is configured (e.g. `boomi_user`), provisioning also creates:
+
+1. ACL profile (`boomi_user`) — mirrors default, controls pub/sub permissions
+2. Client profile (`boomi_user`) — mirrors default, controls connection limits
+3. Client username (`boomi_user`) — ties profile + ACL to a login identity
+4. Queue ownership — sets `owner=boomi_user` and `permission=no-access`
+
+This ensures only Boomi traffic can publish to and consume from migrated queues.
 
 The SEMP preflight and provision command is idempotent:
 

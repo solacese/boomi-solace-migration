@@ -157,6 +157,93 @@ Before migrating, confirm the client username you're using has:
 
 Check in Solace Console: **Access Control -> Client Usernames -> your-username -> ACL Profile**.
 
+### Provisioning a Dedicated Client Username for Boomi
+
+For production migrations, create a dedicated `boomi_user` client-username with
+matching client-profile and ACL-profile. This provides:
+- Isolation: Boomi traffic is identifiable in monitoring/logs
+- Least-privilege: queue ownership restricts access to only the Boomi client
+- Auditability: all Boomi operations are attributable to a single identity
+
+#### SEMP v2 Provisioning Order
+
+1. **ACL Profile** — must exist before assigning to client-username
+2. **Client Profile** — must exist before assigning to client-username
+3. **Client Username** — references both profiles
+4. **Queues** — set `owner` to the client-username
+
+#### ACL Profile (boomi_user)
+
+```
+POST {base}/SEMP/v2/config/msgVpns/{vpn}/aclProfiles
+{
+  "aclProfileName": "boomi_user",
+  "clientConnectDefaultAction": "allow",
+  "publishTopicDefaultAction": "allow",
+  "subscribeTopicDefaultAction": "allow",
+  "subscribeShareNameDefaultAction": "allow"
+}
+```
+
+Mirror the `default` ACL profile. Tighten publish/subscribe exceptions later if
+needed (e.g. restrict to `boomi/>` topic namespace).
+
+#### Client Profile (boomi_user)
+
+```
+POST {base}/SEMP/v2/config/msgVpns/{vpn}/clientProfiles
+{
+  "clientProfileName": "boomi_user",
+  "allowGuaranteedMsgSendEnabled": true,
+  "allowGuaranteedMsgReceiveEnabled": true,
+  "allowTransactedSessionsEnabled": true,
+  "allowBridgeConnectionsEnabled": false,
+  "allowGuaranteedEndpointCreateEnabled": false,
+  "maxConnectionCountPerClientUsername": 200,
+  "maxEgressFlowCount": 1000,
+  "maxIngressFlowCount": 1000,
+  "maxSubscriptionCount": 500000,
+  "maxTransactedSessionCount": 10,
+  "maxTransactionCount": 50
+}
+```
+
+Mirror the `default` client profile. Key: `allowGuaranteedEndpointCreateEnabled`
+is `false` — Boomi should NOT dynamically create queues; provisioning is managed
+by the migration tool via SEMP.
+
+#### Client Username (boomi_user)
+
+```
+POST {base}/SEMP/v2/config/msgVpns/{vpn}/clientUsernames
+{
+  "clientUsername": "boomi_user",
+  "password": "boomi_user",
+  "enabled": true,
+  "clientProfileName": "boomi_user",
+  "aclProfileName": "boomi_user"
+}
+```
+
+Password can be blank (`""`) or set to `"boomi_user"` for non-production. For
+production, use a strong password stored in Boomi's encrypted connection field.
+
+#### Queue Ownership Settings
+
+All migrated queues should set:
+```json
+{
+  "owner": "boomi_user",
+  "permission": "no-access"
+}
+```
+
+- **owner = boomi_user**: grants full access (publish, consume, browse, delete)
+  to any client authenticated as `boomi_user`
+- **permission = no-access**: denies all access to non-owner clients
+
+This is the Solace equivalent of private queue access in Atom Queues.
+
 ---
 
 ## User Properties (Message Headers)

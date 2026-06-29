@@ -119,6 +119,7 @@ class ProcessConfig:
     max_redelivery_count: int = 0
     max_ttl_seconds: int = 0
     max_spool_usage_mb: int | None = None
+    operation_mappings: tuple[OperationMapping, ...] = ()
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], defaults: dict[str, Any], target_folder_id: str) -> ProcessConfig:
@@ -144,6 +145,10 @@ class ProcessConfig:
             or legacy_destination_type
             or "QUEUE"
         ).upper()
+        operation_mappings_raw = data.get("operation_mappings", [])
+        operation_mappings = tuple(
+            OperationMapping.from_dict(item) for item in operation_mappings_raw
+        ) if isinstance(operation_mappings_raw, list) else ()
         return cls(
             id=process_id,
             name=name,
@@ -164,6 +169,7 @@ class ProcessConfig:
             max_redelivery_count=int(data.get("max_redelivery_count", defaults.get("max_redelivery_count", 0))),
             max_ttl_seconds=int(data.get("max_ttl_seconds", defaults.get("max_ttl_seconds", 0))),
             max_spool_usage_mb=optional_int(max_spool_usage),
+            operation_mappings=operation_mappings,
         )
 
 
@@ -186,6 +192,23 @@ class ConnectionConfig:
 
 
 @dataclass(frozen=True)
+class OperationMapping:
+    original_connection_id: str
+    destination: str
+    destination_type: str
+    delivery_mode: str
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OperationMapping:
+        return cls(
+            original_connection_id=str(data.get("original_connection_id", "")).strip(),
+            destination=str(data.get("destination", "")).strip(),
+            destination_type=str(data.get("destination_type", "QUEUE")).upper(),
+            delivery_mode=str(data.get("delivery_mode", "PERSISTENT")).upper(),
+        )
+
+
+@dataclass(frozen=True)
 class MigrationConfig:
     migration_version: str
     output_dir: Path
@@ -194,6 +217,9 @@ class MigrationConfig:
     connection: ConnectionConfig
     defaults: dict[str, Any]
     processes: list[ProcessConfig]
+    # Inline connector profile and naming policy (optional — can also be loaded from separate files)
+    inline_connector_profile: dict[str, Any] | None
+    inline_naming_policy: dict[str, Any] | None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, base_dir: Path) -> MigrationConfig:
@@ -210,6 +236,8 @@ class MigrationConfig:
         output_dir = Path(str(data.get("output_dir", "out/plan")))
         if not output_dir.is_absolute():
             output_dir = base_dir / output_dir
+        inline_connector_profile = data.get("connector_profile")
+        inline_naming_policy = data.get("naming_policy")
         return cls(
             migration_version=str(data.get("migration_version", "0")).strip(),
             output_dir=output_dir,
@@ -220,6 +248,8 @@ class MigrationConfig:
             connection=ConnectionConfig.from_dict(dict(data.get("connection", {}))),
             defaults=defaults,
             processes=processes,
+            inline_connector_profile=dict(inline_connector_profile) if inline_connector_profile else None,
+            inline_naming_policy=dict(inline_naming_policy) if inline_naming_policy else None,
         )
 
     @classmethod

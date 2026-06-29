@@ -1,33 +1,83 @@
-migration_version: "2026.05"
+migration_version: "2026.06"
 output_dir: out/example-plan
 target_folder_id: target-folder-guid
 source_connector_types:
   - atomqueue
   - queue
+
+# Connection credentials (use env vars in production)
 connection:
   name: shared-solace-connection
   host_env: SOLACE_HOST
   vpn_env: SOLACE_MESSAGE_VPN
   username_env: SOLACE_CLIENT_USERNAME
   password_env: SOLACE_CLIENT_PASSWORD
+
+# Connector profile — inline (no separate file needed)
+connector_profile:
+  sub_type: officialboomi-solace-pubsubplus
+  display_name: Solace PubSub+
+  connection_fields:
+    host: host
+    vpn: vpn
+    username: clientUsername
+    password: clientPassword
+  operation_fields:
+    destination: destination
+    destination_type: destinationType
+    delivery_mode: deliveryMode
+  user_properties:
+    connector_operation: Solace PubSub+
+    connector_source: User Properties
+
+# Naming policy — inline (or omit entirely for built-in defaults)
+naming_policy:
+  queue:
+    prefix: boomi
+    separator: _
+    max_length: 80
+    case: lower
+    collision_hash_length: 8
+    allowed_pattern: "^[a-z0-9_.-]+$"
+  topic:
+    separator: /
+    max_length: 250
+    case: camel
+    domain: boomi/migration
+    verb: published
+    version: v1
+    allowed_level_pattern: "^[A-Za-z0-9]+$"
+    require_domain_prefix: true
+    forbidden_levels: [dev, qa, prod, production, staging]
+    forbidden_terms: [traceid, spanid, trace]
+  reserved_words:
+    - "#DEAD_MSG_QUEUE"
+    - default
+
+# Defaults applied to all processes (override per-process as needed)
 defaults:
   send_destination_type: TOPIC
   receive_destination_type: QUEUE
   delivery_mode: PERSISTENT
   queue_access_type: exclusive
-  queue_permission: consume
+  queue_owner: boomi_user
+  queue_permission: no-access
   provision_dmq: true
   max_redelivery_count: 5
   max_ttl_seconds: 0
   max_spool_usage_mb: 5000
   topic_subscriptions: []
+
 processes:
+  # Simple producer — publishes to a topic
   - id: producer-process
     name: Sample Producer Process
     folder_id: source-folder-guid
     target_folder_id: target-folder-guid
     xml_path: tests/fixtures/producer.xml
     send_destination: ""
+
+  # Simple consumer — listens on a queue with topic subscription
   - id: consumer-process
     name: Sample Consumer Process
     folder_id: source-folder-guid
@@ -36,3 +86,18 @@ processes:
     receive_destination: ""
     topic_subscriptions:
       - boomi/migration/sampleProducerProcess/published/v1
+
+  # Multi-destination process — uses operation_mappings
+  # - id: routing-process
+  #   name: SCE Routing Process
+  #   folder_id: source-folder-guid
+  #   xml_path: processes/sce_routing.xml
+  #   operation_mappings:
+  #     - original_connection_id: "6f53dde3-d888-441f-919f-20fb3e659c17"
+  #       destination: "Culina2/SCE/ASN/Published/v1"
+  #       destination_type: TOPIC
+  #       delivery_mode: PERSISTENT
+  #     - original_connection_id: "7ef67a2d-6c09-4c3f-a34b-a26adb887f24"
+  #       destination: "Culina2/SCE/DNH/Published/v1"
+  #       destination_type: TOPIC
+  #       delivery_mode: PERSISTENT

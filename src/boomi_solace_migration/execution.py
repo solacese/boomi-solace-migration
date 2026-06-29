@@ -138,6 +138,46 @@ def rollback_manifest(
     return {"dry_run": dry_run, "deleted": deleted}
 
 
+def provision_solace_access_control(
+    *,
+    plan: dict[str, Any],
+    dry_run: bool,
+    client: SolaceSempClient | None = None,
+) -> dict[str, Any]:
+    """Provision client-username, client-profile, and ACL-profile for queue ownership."""
+    if client is None and not dry_run:
+        client = SolaceSempClient.from_env()
+    # Determine owner from plan defaults or first process with queue_owner set
+    owner = ""
+    for process in plan.get("processes", []):
+        owner = process.get("queue_owner", "")
+        if owner:
+            break
+    if not owner:
+        return {"dry_run": dry_run, "results": [], "skipped": "no queue_owner configured"}
+
+    results: list[dict[str, Any]] = []
+    if dry_run:
+        results.append({"acl_profile": owner, "status": "would_create"})
+        results.append({"client_profile": owner, "status": "would_create"})
+        results.append({"client_username": owner, "status": "would_create"})
+        return {"dry_run": True, "results": results}
+
+    assert client is not None
+    results.append(client.ensure_acl_profile(profile_name=owner, dry_run=False))
+    results.append(client.ensure_client_profile(profile_name=owner, dry_run=False))
+    results.append(
+        client.ensure_client_username(
+            username=owner,
+            password=owner,
+            client_profile_name=owner,
+            acl_profile_name=owner,
+            dry_run=False,
+        )
+    )
+    return {"dry_run": False, "results": results}
+
+
 def provision_solace_destinations(
     *,
     plan: dict[str, Any],

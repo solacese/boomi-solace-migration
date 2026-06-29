@@ -8,6 +8,25 @@
     "target_folder_id": { "type": "string", "minLength": 1 },
     "source_connector_types": { "type": "array", "items": { "type": "string" } },
     "connection": { "type": "object" },
+    "connector_profile": {
+      "type": "object",
+      "description": "Inline connector profile (optional alternative to --connector-profile file)",
+      "properties": {
+        "sub_type": { "type": "string", "minLength": 1 },
+        "connection_fields": { "type": "object" },
+        "operation_fields": { "type": "object" },
+        "user_properties": { "type": "object" }
+      }
+    },
+    "naming_policy": {
+      "type": "object",
+      "description": "Inline naming policy (optional alternative to --naming-policy file)",
+      "properties": {
+        "queue": { "type": "object" },
+        "topic": { "type": "object" },
+        "reserved_words": { "type": "array", "items": { "type": "string" } }
+      }
+    },
     "defaults": {
       "type": "object",
       "properties": {
@@ -50,7 +69,22 @@
           "max_redelivery_count": { "type": "integer", "minimum": 0, "maximum": 255 },
           "max_ttl_seconds": { "type": "integer", "minimum": 0 },
           "max_spool_usage_mb": { "type": "integer", "minimum": 1 },
-          "topic_subscriptions": { "type": "array", "items": { "type": "string" } }
+          "topic_subscriptions": { "type": "array", "items": { "type": "string" } },
+          "operation_mappings": {
+            "type": "array",
+            "description": "Per-connection operation mapping for multi-destination processes",
+            "items": {
+              "type": "object",
+              "required": ["original_connection_id", "destination"],
+              "properties": {
+                "original_connection_id": { "type": "string", "minLength": 1 },
+                "destination": { "type": "string", "minLength": 1 },
+                "destination_type": { "enum": ["QUEUE", "TOPIC"] },
+                "delivery_mode": { "enum": ["PERSISTENT", "NON_PERSISTENT"] }
+              },
+              "additionalProperties": false
+            }
+          }
         },
         "additionalProperties": true
       }

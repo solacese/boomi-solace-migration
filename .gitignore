@@ -17,3 +17,5 @@ out/
 /migration-plan*.json
 /inventory*.json
 *.log
+migration.yaml
+migration_v2.yaml

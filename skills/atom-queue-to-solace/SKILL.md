@@ -84,6 +84,87 @@ folder (e.g. `Process 1 - Solace`).
 - Use `Domain/Noun/Verb/Version` topics when topic routing is appropriate.
 - Deploy consumers before producers during cutover.
 
+## Solace Access Control Provisioning
+
+Each migration project should provision a dedicated client-username with matching
+client-profile and ACL-profile. This isolates Boomi traffic and enforces
+least-privilege queue ownership.
+
+### Client Username
+
+Create a client-username (e.g. `boomi_user`) with password blank or matching the
+username. All Boomi connections use this username.
+
+```
+POST {base}/SEMP/v2/config/msgVpns/{vpn}/clientUsernames
+{
+  "clientUsername": "boomi_user",
+  "password": "boomi_user",
+  "enabled": true,
+  "clientProfileName": "boomi_user",
+  "aclProfileName": "boomi_user"
+}
+```
+
+### Client Profile
+
+Create a client-profile called `boomi_user` with the same settings as the
+`default` client profile. Key fields to mirror from `#client-profile/default`:
+
+```
+POST {base}/SEMP/v2/config/msgVpns/{vpn}/clientProfiles
+{
+  "clientProfileName": "boomi_user",
+  "allowGuaranteedMsgSendEnabled": true,
+  "allowGuaranteedMsgReceiveEnabled": true,
+  "allowTransactedSessionsEnabled": true,
+  "allowBridgeConnectionsEnabled": false,
+  "allowGuaranteedEndpointCreateEnabled": false,
+  "maxConnectionCountPerClientUsername": 200,
+  "maxEgressFlowCount": 1000,
+  "maxIngressFlowCount": 1000,
+  "maxSubscriptionCount": 500000,
+  "maxTransactedSessionCount": 10,
+  "maxTransactionCount": 50
+}
+```
+
+### ACL Profile
+
+Create an ACL-profile called `boomi_user` with the same settings as the
+`default` ACL profile:
+
+```
+POST {base}/SEMP/v2/config/msgVpns/{vpn}/aclProfiles
+{
+  "aclProfileName": "boomi_user",
+  "clientConnectDefaultAction": "allow",
+  "publishTopicDefaultAction": "allow",
+  "subscribeTopicDefaultAction": "allow",
+  "subscribeShareNameDefaultAction": "allow"
+}
+```
+
+### Queue Ownership
+
+All migrated queues must set `owner` to `boomi_user` and restrict non-owner
+access to `no-access`:
+
+```json
+{
+  "queueName": "my_queue",
+  "owner": "boomi_user",
+  "permission": "no-access",
+  "accessType": "exclusive",
+  "egressEnabled": true,
+  "ingressEnabled": true
+}
+```
+
+This ensures only the `boomi_user` client-username can publish to and consume
+from migrated queues. Non-owner clients receive "Permission Denied" if they
+attempt access.
+
 ## References
 
 Load only what is needed:
