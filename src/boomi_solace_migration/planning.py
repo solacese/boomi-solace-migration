@@ -165,7 +165,7 @@ def _plan_process(
         "migration_version": config.migration_version,
     }
     connection_values = config.connection.values(redacted=True)
-    connection_name = f"{process.name} - Solace Connection [{short}]"
+    connection_name = f"{process.name} - Connection [{short}]"
     connection_xml = build_connection_component_xml(
         component_name=connection_name,
         folder_id=process.target_folder_id,
