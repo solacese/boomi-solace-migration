@@ -10,6 +10,27 @@ description: >
 
 **One command does everything.** The agent's job is to collect info, write config, run, verify.
 
+## For Colleagues: How to Run This
+
+Use **Claude Code** (CLI) with:
+- Model: **Claude Sonnet** (fast, cheap, follows the skill well)
+- Effort: **medium** (this is a directed task, not open-ended research)
+- Skill loaded automatically from this repo
+
+Just tell it what to migrate:
+```
+Migrate processes [list IDs or names] from Atom Queues to Solace.
+Target folder: [folder ID or name].
+Connector subType in this account: [subType from an existing Solace component].
+```
+
+The agent will export XMLs, write config, run the tool, and report back.
+Whole session should take **under 15 minutes**.
+
+> **Tip**: If the `.env` is already configured with Boomi + Solace creds, the agent
+> only needs process IDs, destinations, and the target folder. Everything else is
+> defaulted.
+
 ## Quick Start (the whole workflow)
 
 ```bash
