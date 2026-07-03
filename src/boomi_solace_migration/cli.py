@@ -80,6 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--manifest", default="run-manifest.json")
     run.add_argument("--dry-run", action="store_true")
     run.add_argument("--skip-provision", action="store_true", help="Skip Solace provisioning")
+    run.add_argument("--monitor-queues", action="store_true", help="Fetch queue stats after provisioning")
     run.add_argument("--report-output", default="migration-report.md")
     run.set_defaults(func=cmd_run)
 
@@ -314,7 +315,9 @@ def cmd_run(args: argparse.Namespace) -> None:
     if not args.skip_provision:
         ac_result = provision_solace_access_control(plan=plan, dry_run=bool(args.dry_run))
         _print_provision_summary("access_control", ac_result)
-        provision_result = provision_solace_destinations(plan=plan, dry_run=bool(args.dry_run))
+        provision_result = provision_solace_destinations(
+            plan=plan, dry_run=bool(args.dry_run), monitor_queues=bool(args.monitor_queues)
+        )
         _print_provision_summary("queues", provision_result)
     else:
         print("  ⊘ Solace provisioning skipped")

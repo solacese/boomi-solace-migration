@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 from collections.abc import Callable
 from typing import Any, cast
@@ -21,7 +22,7 @@ class SolaceSempClient:
         username: str | None = None,
         password: str | None = None,
         bearer_token: str | None = None,
-        min_request_interval_seconds: float = 0.11,
+        min_request_interval_seconds: float = 0.05,
         request_timeout_seconds: float = 30.0,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -32,6 +33,7 @@ class SolaceSempClient:
         self.request_timeout_seconds = request_timeout_seconds
         self.sleep = sleep
         self._last_request_at = 0.0
+        self._rate_lock = threading.Lock()
         if bearer_token:
             self.session.headers.update({"Authorization": f"Bearer {bearer_token}"})
         elif username is not None and password is not None:
@@ -49,7 +51,7 @@ class SolaceSempClient:
             username=os.environ.get("SOLACE_SEMP_USERNAME"),
             password=os.environ.get("SOLACE_SEMP_PASSWORD"),
             bearer_token=os.environ.get("SOLACE_SEMP_TOKEN"),
-            min_request_interval_seconds=float(os.environ.get("SOLACE_SEMP_MIN_INTERVAL_SECONDS", "0.11")),
+            min_request_interval_seconds=float(os.environ.get("SOLACE_SEMP_MIN_INTERVAL_SECONDS", "0.05")),
             request_timeout_seconds=float(os.environ.get("SOLACE_SEMP_TIMEOUT_SECONDS", "30")),
         )
 
@@ -361,12 +363,13 @@ class SolaceSempClient:
         if "timeout" not in kwargs:
             kwargs["timeout"] = self.request_timeout_seconds
         if self.min_request_interval_seconds > 0:
-            elapsed = time.monotonic() - self._last_request_at
-            wait_for = self.min_request_interval_seconds - elapsed
-            if wait_for > 0:
-                self.sleep(wait_for)
+            with self._rate_lock:
+                elapsed = time.monotonic() - self._last_request_at
+                wait_for = self.min_request_interval_seconds - elapsed
+                if wait_for > 0:
+                    self.sleep(wait_for)
+                self._last_request_at = time.monotonic()
         response = request_with_retry(self.session, method, url, **kwargs)
-        self._last_request_at = time.monotonic()
         return response
 
     @staticmethod
