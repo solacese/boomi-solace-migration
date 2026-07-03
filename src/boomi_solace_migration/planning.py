@@ -165,7 +165,7 @@ def _plan_process(
         "migration_version": config.migration_version,
     }
     connection_values = config.connection.values(redacted=True)
-    connection_name = f"{process.name} - Connection [{short}]"
+    connection_name = f"{process.name} - Solace Connection [{short}]"
     connection_xml = build_connection_component_xml(
         component_name=connection_name,
         folder_id=process.target_folder_id,
@@ -182,7 +182,7 @@ def _plan_process(
     for action in actions:
         destination = send_destination if action == "send" else receive_destination
         destination_type = send_destination_type if action == "send" else receive_destination_type
-        operation_name = f"{process.name} - {action.title()} {destination} [{short}]"
+        operation_name = f"{process.name} - Solace {action.title()} {destination} [{short}]"
         operation_xml = build_operation_component_xml(
             action=action,
             component_name=operation_name,

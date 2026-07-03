@@ -14,7 +14,7 @@ description: >
 
 Do not mutate original Boomi processes. The original process is a source artifact
 only; migrated components are created as new Boomi components in a dedicated
-folder (e.g. `Process 1 - Migrated`).
+folder (e.g. `Process 1 - Solace`).
 
 ## Proven Workflow (from production migrations)
 
@@ -42,7 +42,7 @@ folder (e.g. `Process 1 - Migrated`).
    - Create migrated process → **verify type=process, all IDs populated**
 
 3. **Organize** — move components into dedicated folders:
-   - Create `{Process Name} - Migrated` folder under the parent
+   - Create `{Process Name} - Solace` folder under the parent
    - Move connection, operations, and process into it
    - Move any orphans from failed runs to `_Orphaned (safe to delete)`
 

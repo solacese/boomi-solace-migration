@@ -9,7 +9,7 @@ from .naming import ddp_to_user_property
 from .xml_io import find_child_local, iter_local, local_name, parse_xml, remove_read_only_attributes, tostring
 
 ACTION_MAP = {"send": "Send", "listen": "Listen", "get": "Get"}
-LABEL_MAP = {"send": "Send Message", "listen": "Listen for Messages", "get": "Receive Message"}
+LABEL_MAP = {"send": "Send Message", "listen": "Listen on Solace Queue", "get": "Receive from Solace Queue"}
 
 
 @dataclass(frozen=True)
@@ -45,7 +45,7 @@ def transform_process_xml(
     root = parse_xml(original_xml)
     root.set("componentId", "")
     root.set("version", "1")
-    root.set("name", f"{root.get('name', process_name)} - Migrated")
+    # Keep original process name — do not rename migrated processes
     root.set("folderId", target_folder_id)
     remove_read_only_attributes(root)
 
