@@ -1,4 +1,4 @@
-# XML Templates: Solace PubSub+ Components
+# XML Templates: Solace Components
 
 All Boomi component XML must be wrapped in the `bns:Component` envelope. The `componentId` is assigned by the API on creation - leave it empty when posting. All namespace declarations are required.
 
@@ -295,12 +295,12 @@ Add this step immediately after the Solace connector in consumer processes to re
 <shape shapetype="documentproperties" userlabel="Extract User Properties" ...>
   <setproperties>
     <propertyvalue childKey="ENTITY_ID" valueType="connector">
-      <connectorparameter connectorOperation="Solace PubSub+"
+      <connectorparameter connectorOperation="Solace"
                           connectorProperty="entityId"
                           connectorSource="User Properties"/>
     </propertyvalue>
     <propertyvalue childKey="ATTRIBUTE_ID" valueType="connector">
-      <connectorparameter connectorOperation="Solace PubSub+"
+      <connectorparameter connectorOperation="Solace"
                           connectorProperty="attributeId"
                           connectorSource="User Properties"/>
     </propertyvalue>

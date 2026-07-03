@@ -1,8 +1,8 @@
-# Solace PubSub+ Reference for Boomi Migration
+# Solace Reference for Boomi Migration
 
 ## Overview
 
-Solace PubSub+ is an enterprise event broker that supports multiple messaging protocols (SMF, AMQP 1.0, MQTT, REST, JMS) and provides guaranteed delivery, message replay, topic hierarchies, and a rich management API.
+Solace is an enterprise event broker that supports multiple messaging protocols (SMF, AMQP 1.0, MQTT, REST, JMS) and provides guaranteed delivery, message replay, topic hierarchies, and a rich management API.
 
 ---
 
@@ -283,7 +283,7 @@ the DMQ in Solace Console under **Queues**.
 
 ## Connector Discovery in Boomi
 
-The Boomi Solace PubSub+ connector is installed as a **Tech Partner Connector** (or first-party connector depending on account). Its `subType` is the unique identifier Boomi uses in component XML.
+The Boomi Solace connector is installed as a **Tech Partner Connector** (or first-party connector depending on account). Its `subType` is the unique identifier Boomi uses in component XML.
 
 **To find it manually:**
 1. Boomi Build tab -> New Component -> Connector

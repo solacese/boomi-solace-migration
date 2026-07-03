@@ -96,7 +96,7 @@ When creating a component with a name that already exists in the same folder, Bo
 **Cause:** No Solace connector components exist in the account yet.
 
 **Fix:** Create a minimal Solace connection in the Boomi Build tab:
-1. New Component -> Connector -> select Solace PubSub+
+1. New Component -> Connector -> select Solace
 2. Name it anything (e.g. "Solace Test")
 3. Save without filling in credentials
 4. Note the component ID from the URL

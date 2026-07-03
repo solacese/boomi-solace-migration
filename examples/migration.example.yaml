@@ -16,7 +16,7 @@ connection:
 # Connector profile — inline (no separate file needed)
 connector_profile:
   sub_type: officialboomi-solace-pubsubplus
-  display_name: Solace PubSub+
+  display_name: Solace
   connection_fields:
     host: host
     vpn: vpn
@@ -27,7 +27,7 @@ connector_profile:
     destination_type: destinationType
     delivery_mode: deliveryMode
   user_properties:
-    connector_operation: Solace PubSub+
+    connector_operation: Solace
     connector_source: User Properties
 
 # Naming policy — inline (or omit entirely for built-in defaults)

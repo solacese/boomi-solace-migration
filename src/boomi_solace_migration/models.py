@@ -66,9 +66,9 @@ class ConnectorProfile:
         if not sub_type:
             raise ValueError("Connector profile requires sub_type")
         return cls(
-            name=str(data.get("name", "solace-pubsub-plus")),
+            name=str(data.get("name", "solace")),
             sub_type=sub_type,
-            display_name=str(data.get("display_name", "Solace PubSub+")),
+            display_name=str(data.get("display_name", "Solace")),
             connection_fields=connection_fields,
             operation_fields=operation_fields,
             user_properties={str(k): str(v) for k, v in data.get("user_properties", {}).items()},

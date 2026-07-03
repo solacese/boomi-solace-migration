@@ -1,14 +1,14 @@
-# Migration Overview: Atom Queues -> Solace PubSub+
+# Migration Overview: Atom Queues -> Solace
 
 ## Why Migrate
 
-Atom Queues are in maintenance mode (no new features since September 2025). Solace PubSub+ is a full-featured enterprise messaging platform with persistent queues, topic hierarchies, guaranteed delivery, replay, and rich observability - and is the target platform for many organizations moving to a strategic message broker.
+Atom Queues are in maintenance mode (no new features since September 2025). Solace is a full-featured enterprise messaging platform with persistent queues, topic hierarchies, guaranteed delivery, replay, and rich observability - and is the target platform for many organizations moving to a strategic message broker.
 
 ---
 
 ## Architecture Comparison
 
-| Concern | Atom Queues | Solace PubSub+ |
+| Concern | Atom Queues | Solace |
 |---|---|---|
 | Message Properties | DDPs auto-propagated | Explicit User Properties (header) |
 | Authentication | Implicit (runtime-level) | Client username + password (or client certificate) per VPN |
@@ -106,7 +106,7 @@ Add a **Set Properties** step immediately after the Solace connector:
 <shape shapetype="documentproperties" userlabel="Extract User Properties" ...>
   <setproperties>
     <propertyvalue childKey="ENTITY_ID" valueType="connector">
-      <connectorparameter connectorOperation="Solace PubSub+"
+      <connectorparameter connectorOperation="Solace"
                           connectorProperty="entityId"
                           connectorSource="User Properties"/>
     </propertyvalue>

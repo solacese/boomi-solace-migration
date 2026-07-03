@@ -1,7 +1,7 @@
 ---
 name: atom-queue-to-solace
 description: >
-  Use this skill to migrate Boomi Atom Queue integrations to Solace PubSub+.
+  Use this skill to migrate Boomi Atom Queue integrations to Solace.
   Covers the full lifecycle: discover queue operations in processes, provision
   Solace queues via SEMP, create Solace connection/operation components in Boomi,
   transform process XML to swap connectors, verify all components post-creation,
@@ -10,7 +10,7 @@ description: >
   Send, Listen for Listen), SEMP 400/NOT_FOUND handling, and safe Boomi API usage.
 ---
 
-# Atom Queue to Solace PubSub+ Migration
+# Atom Queue to Solace Migration
 
 Do not mutate original Boomi processes. The original process is a source artifact
 only; migrated components are created as new Boomi components in a dedicated

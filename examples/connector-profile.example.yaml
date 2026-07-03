@@ -1,6 +1,6 @@
-name: solace-pubsub-plus
+name: solace
 sub_type: officialboomi-solace-pubsubplus
-display_name: Solace PubSub+
+display_name: Solace
 connection_fields:
   host: host
   vpn: vpn
@@ -11,5 +11,5 @@ operation_fields:
   destination_type: destinationType
   delivery_mode: deliveryMode
 user_properties:
-  connector_operation: Solace PubSub+
+  connector_operation: Solace
   connector_source: User Properties
