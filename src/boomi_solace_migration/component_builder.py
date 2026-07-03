@@ -17,7 +17,6 @@ def _component_root(
     return ET.Element(
         qname(BNS, "Component"),
         {
-            "componentId": "",
             "version": "1",
             "name": name,
             "type": component_type,

@@ -43,7 +43,9 @@ def transform_process_xml(
             raise ValueError("No Atom Queue operations found")
 
     root = parse_xml(original_xml)
-    root.set("componentId", "")
+    # Remove componentId so Boomi API assigns a fresh one on creation.
+    # Setting it to "" causes the UI to error ("cannot read properties of undefined").
+    root.attrib.pop("componentId", None)
     root.set("version", "1")
     # Keep original process name — do not rename migrated processes
     root.set("folderId", target_folder_id)
