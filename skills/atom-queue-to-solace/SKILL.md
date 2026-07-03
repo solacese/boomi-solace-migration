@@ -29,22 +29,41 @@ folder (e.g. `Process 1 - Solace`).
 
 2. **Run migration** — single command:
    ```bash
-   python -m migrate --config migration.yaml
+   uv run python -m boomi_solace_migration run --config migration.yaml
    ```
-   This performs all steps atomically per process:
-   - Authenticate to Boomi and Solace SEMP
-   - Fetch original process XML
-   - Detect queue operations
-   - Provision Solace queues (idempotent via SEMP v2)
-   - Create Solace connection component → **verify all fields non-empty**
-   - Create Solace operation component(s) → **verify destination/type correct**
-   - Transform process XML (swap connectors) → **verify no source connectors remain**
-   - Create migrated process → **verify type=process, all IDs populated**
+   This performs all steps with parallel execution:
+   - Plan (offline, deterministic)
+   - Provision Solace access control (ACL + client profile + client username)
+   - Provision Solace queues (parallel, 5 workers via SOLACE_PROVISION_WORKERS)
+   - Apply to Boomi (parallel, 3 workers via BOOMI_APPLY_WORKERS):
+     - Create Solace connection → **verify all fields non-empty**
+     - Create Solace operation(s) → **verify destination/type correct**
+     - Transform process XML (swap connectors, **keep original process name**)
+     - Create migrated process → **verify type=process, all IDs populated**
+
+   Target: complete in **under 15 minutes** for typical migrations.
 
 3. **Organize** — move components into dedicated folders:
    - Create `{Process Name} - Solace` folder under the parent
    - Move connection, operations, and process into it
    - Move any orphans from failed runs to `_Orphaned (safe to delete)`
+
+## Naming Conventions
+
+- **Process name**: unchanged (never rename the migrated process)
+- **Connection**: `{Process Name} - Solace Connection [{hash}]`
+- **Operation**: `{Process Name} - Solace {Action} {destination} [{hash}]`
+- **Shape labels**: "Listen on Solace Queue" / "Send Message" / "Receive from Solace Queue"
+- **Display name**: "Solace" (not "Solace PubSub+" — keep it short)
+- **Queue names**: per config, no "Solace"/"PubSub+" in queue names
+
+## Performance Tuning
+
+- `SOLACE_SEMP_MIN_INTERVAL_SECONDS=0.05` (default 50ms between SEMP calls)
+- `SOLACE_PROVISION_WORKERS=5` (parallel queue provisioning threads)
+- `BOOMI_APPLY_WORKERS=3` (parallel Boomi component creation threads)
+- `--monitor-queues` flag (off by default, adds stats fetch per queue)
+- Queue monitoring is informational only — skip for speed
 
 ## Safety Rules
 
@@ -59,6 +78,9 @@ folder (e.g. `Process 1 - Solace`).
   creation (they contain dangling trading partner references).
 - Strip all read-only attributes including `copiedFromComponentId` and
   `copiedFromComponentVersion`.
+- **Remove `componentId` from new components** — do NOT set it to empty string
+  (causes Boomi UI error "cannot read properties of undefined"). Let the API
+  assign the ID on creation.
 
 ## Critical Technical Facts (Verified in Production)
 
