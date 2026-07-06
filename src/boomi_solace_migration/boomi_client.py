@@ -97,6 +97,50 @@ class BoomiClient:
             raise RuntimeError("Boomi create component response did not include componentId")
         return component_id
 
+    def find_component_by_name(self, name: str, folder_id: str, component_type: str) -> str | None:
+        """Find a component by exact name in a folder. Returns componentId or None."""
+        response = request_with_retry(
+            self.session,
+            "POST",
+            f"{self.base}/ComponentMetadata/query",
+            headers=self._json_headers(),
+            json={
+                "QueryFilter": {
+                    "expression": {
+                        "operator": "and",
+                        "nestedExpression": [
+                            {"argument": [name], "operator": "EQUALS", "property": "name"},
+                            {"argument": [folder_id], "operator": "EQUALS", "property": "folderId"},
+                            {"argument": [component_type], "operator": "EQUALS", "property": "type"},
+                        ],
+                    }
+                }
+            },
+        )
+        if response.status_code != 200:
+            return None
+        data = response.json()
+        results = data.get("result", [])
+        for result in results:
+            if result.get("name") == name and result.get("folderId") == folder_id:
+                cid: str | None = result.get("componentId")
+                return cid
+        return None
+
+    def create_or_reuse_component(self, xml_body: str) -> str:
+        """Create a component, or reuse an existing one with the same name/folder/type."""
+        import xml.etree.ElementTree as ET
+
+        root = ET.fromstring(xml_body)
+        name = root.get("name", "")
+        folder_id = root.get("folderId", "")
+        component_type = root.get("type", "")
+        if name and folder_id and component_type:
+            existing_id = self.find_component_by_name(name, folder_id, component_type)
+            if existing_id:
+                return existing_id
+        return self.create_component(xml_body)
+
     def delete_component(self, component_id: str) -> None:
         response = request_with_retry(
             self.session,

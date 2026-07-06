@@ -1,0 +1,64 @@
+# End-to-end migration test: 2 JMS Basics processes → Solace in "culina_tests" folder
+migration_version: "2026.07"
+output_dir: out/culina-test
+
+target_folder_id: "Rjo4NjgyMjg5"  # culina_tests folder
+
+source_connector_types:
+  - jms
+
+# Connection credentials via env vars
+connection:
+  name: culina-test-connection
+  host_env: SOLACE_HOST
+  vpn_env: SOLACE_MESSAGE_VPN
+  username_env: SOLACE_CLIENT_USERNAME
+  password_env: SOLACE_CLIENT_PASSWORD
+
+# Connector profile: Solace PubSub+ field IDs (from production reference)
+connector_profile:
+  sub_type: trainingjessemenning-WX1LP2-solace-dev
+  display_name: Solace
+  connection_fields:
+    host: host
+    vpn: vpn_name
+    username: username
+    password: password
+  operation_fields:
+    destination: destination
+    destination_type: endpointType
+    delivery_mode: mode
+  user_properties:
+    connector_operation: Solace
+    connector_source: User Properties
+
+# Defaults
+defaults:
+  send_destination_type: QUEUE
+  receive_destination_type: QUEUE
+  delivery_mode: PERSISTENT
+  queue_access_type: exclusive
+  queue_owner: boomi_user
+  queue_permission: no-access
+  provision_dmq: true
+  max_redelivery_count: 3
+  max_ttl_seconds: 0
+  max_spool_usage_mb: 5000
+  topic_subscriptions: []
+
+processes:
+  - id: "454d166a-7e5d-4f51-bf5f-25fc9432e301"
+    name: "JMS Basics: Send Messages"
+    folder_id: "RjozMjc3NzI5"
+    xml_path: out/culina-test/processes/jms_basics_send.xml
+    send_destination: "boomi_jms_basics_send"
+    receive_destination: ""
+
+  - id: "f5d8a447-3970-4f67-8499-1fafa0029770"
+    name: "JMS Basics: Listen for Messages"
+    folder_id: "RjozMjc3NzI5"
+    xml_path: out/culina-test/processes/jms_basics_listen.xml
+    send_destination: ""
+    receive_destination: "boomi_jms_basics_listen"
+    topic_subscriptions:
+      - "boomi/migration/jmsBasics/published/v1"

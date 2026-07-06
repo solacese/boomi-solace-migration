@@ -103,25 +103,22 @@ def build_operation_component_xml(
     if action_key == "send":
         operation_attrs = {"returnApplicationErrors": "false", "trackResponse": "false"}
         generic_attrs = {
-            "customOperationType": "SEND",
-            "operationType": "EXECUTE",
+            "operationType": "CREATE",
             "requestProfileType": "binary",
-            "responseProfileType": "none",
+            "responseProfileType": "binary",
         }
     elif action_key == "listen":
         operation_attrs = {"returnApplicationErrors": "false", "trackResponse": "true"}
         generic_attrs = {
-            "customOperationType": "LISTEN",
             "operationType": "Listen",
-            "requestProfileType": "none",
+            "requestProfileType": "binary",
             "responseProfileType": "binary",
         }
     else:
         operation_attrs = {"returnApplicationErrors": "false", "trackResponse": "true"}
         generic_attrs = {
-            "customOperationType": "GET",
-            "operationType": "EXECUTE",
-            "requestProfileType": "none",
+            "operationType": "GET",
+            "requestProfileType": "binary",
             "responseProfileType": "binary",
         }
 
