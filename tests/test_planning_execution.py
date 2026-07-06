@@ -120,6 +120,12 @@ class FakeBoomiClient:
         self.created.append(xml_body)
         return component_id
 
+    def find_component_by_name(self, name: str, folder_id: str, component_type: str) -> str | None:
+        return None  # Always creates new in tests
+
+    def create_or_reuse_component(self, xml_body: str) -> str:
+        return self.create_component(xml_body)
+
     def delete_component(self, component_id: str) -> None:
         self.deleted.append(component_id)
 

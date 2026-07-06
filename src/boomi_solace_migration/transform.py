@@ -28,6 +28,7 @@ def transform_process_xml(
     profile: ConnectorProfile,
     connection_id: str,
     operation_ids: dict[str, str],
+    connection_operation_map: dict[str, str] | None = None,
     strict: bool = True,
 ) -> TransformResult:
     detection = detect_queue_usage(original_xml, source_connector_types)
@@ -62,7 +63,13 @@ def transform_process_xml(
             if strict:
                 raise ValueError(f"Unsupported Atom Queue action: {action_key}")
             continue
-        operation_id = operation_ids.get(action_key)
+
+        # Multi-destination: use connection_operation_map if available
+        original_conn_id = elem.get("connectionId", "")
+        if connection_operation_map and original_conn_id in connection_operation_map:
+            operation_id = connection_operation_map[original_conn_id]
+        else:
+            operation_id = operation_ids.get(action_key)
         if not operation_id and strict:
             raise ValueError(f"Missing operation id for action: {action_key}")
 
@@ -73,9 +80,14 @@ def transform_process_xml(
         if action_key == "send" and detection.ddps:
             _add_user_property_mappings(elem, ddp_user_properties)
 
+    _RELABEL_TRIGGERS = {"queue", "jms", "activemq", "atom queue", "atomqueue"}
+
     for shape in iter_local(root, "shape"):
         label = shape.get("userlabel", "")
-        if "queue" not in label.lower():
+        if not label:
+            continue
+        label_lower = label.lower()
+        if not any(trigger in label_lower for trigger in _RELABEL_TRIGGERS):
             continue
         action_key = _shape_action(shape)
         if action_key in LABEL_MAP:

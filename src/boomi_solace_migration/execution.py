@@ -50,10 +50,11 @@ def _apply_single_process(
                 "plan_id": plan_id,
             },
         )
-        connection_id = client.create_component(connection_xml)
+        connection_id = client.create_or_reuse_component(connection_xml)
         entry["created_components"].append({"kind": "connection", "component_id": connection_id})
 
         operation_ids: dict[str, str] = {}
+        connection_operation_map: dict[str, str] = {}
         for operation in process["operations"]:
             operation_xml = build_operation_component_xml(
                 action=operation["action"],
@@ -69,11 +70,14 @@ def _apply_single_process(
                     "plan_id": plan_id,
                 },
             )
-            operation_id = client.create_component(operation_xml)
+            operation_id = client.create_or_reuse_component(operation_xml)
             operation_ids[operation["action"]] = operation_id
             entry["created_components"].append(
                 {"kind": f"{operation['action']}_operation", "component_id": operation_id}
             )
+            # Track per-connection mapping for multi-destination transforms
+            if operation.get("original_connection_id"):
+                connection_operation_map[operation["original_connection_id"]] = operation_id
 
         original_xml = Path(process["source_xml_path"]).read_text(encoding="utf-8")
         transformed = transform_process_xml(
@@ -84,6 +88,7 @@ def _apply_single_process(
             profile=profile,
             connection_id=connection_id,
             operation_ids=operation_ids,
+            connection_operation_map=connection_operation_map or None,
         )
         fail_on_issues(
             validate_transformed_process_xml(
@@ -92,7 +97,7 @@ def _apply_single_process(
                 source_connector_types=source_connector_types,
             )
         )
-        migrated_process_id = client.create_component(transformed.xml)
+        migrated_process_id = client.create_or_reuse_component(transformed.xml)
         entry["created_components"].append({"kind": "process", "component_id": migrated_process_id})
         entry["new_process_id"] = migrated_process_id
         entry["status"] = "success"

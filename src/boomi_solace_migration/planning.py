@@ -179,34 +179,102 @@ def _plan_process(
 
     operation_ids = {action: f"PLAN_OP_{action.upper()}_{short}" for action in actions}
     operations: list[dict[str, Any]] = []
-    for action in actions:
-        destination = send_destination if action == "send" else receive_destination
-        destination_type = send_destination_type if action == "send" else receive_destination_type
-        operation_name = f"{process.name} - Solace {action.title()} {destination} [{short}]"
-        operation_xml = build_operation_component_xml(
-            action=action,
-            component_name=operation_name,
-            folder_id=process.target_folder_id,
-            profile=profile,
-            destination=destination,
-            destination_type=destination_type,
-            delivery_mode=process.delivery_mode,
-            metadata=metadata,
-        )
-        fail_on_issues(validate_operation_xml(operation_xml))
-        operation_xml_path = components_dir / f"{stem}_{action}_operation.xml"
-        operation_xml_path.write_text(canonical_xml(operation_xml) + "\n", encoding="utf-8")
-        operations.append(
-            {
-                "action": action,
-                "destination": destination,
-                "destination_type": destination_type,
-                "delivery_mode": process.delivery_mode,
-                "component_name": operation_name,
-                "xml_path": str(operation_xml_path),
-                "placeholder_id": operation_ids[action],
-            }
-        )
+    connection_operation_map: dict[str, str] = {}
+
+    if process.operation_mappings:
+        # Multi-destination: one operation per mapping
+        for idx, mapping in enumerate(process.operation_mappings):
+            action = "send"  # operation_mappings are always Send (multi-destination routing)
+            op_short = stable_hash(f"{process.id}:{mapping.original_connection_id}", 8)
+            operation_name = f"{process.name} - Solace Send {mapping.destination} [{op_short}]"
+            operation_xml = build_operation_component_xml(
+                action=action,
+                component_name=operation_name,
+                folder_id=process.target_folder_id,
+                profile=profile,
+                destination=mapping.destination,
+                destination_type=mapping.destination_type,
+                delivery_mode=mapping.delivery_mode,
+                metadata=metadata,
+            )
+            fail_on_issues(validate_operation_xml(operation_xml))
+            operation_xml_path = components_dir / f"{stem}_send_{idx}_operation.xml"
+            operation_xml_path.write_text(canonical_xml(operation_xml) + "\n", encoding="utf-8")
+            placeholder_id = f"PLAN_OP_SEND_{op_short}"
+            connection_operation_map[mapping.original_connection_id] = placeholder_id
+            operations.append(
+                {
+                    "action": action,
+                    "destination": mapping.destination,
+                    "destination_type": mapping.destination_type,
+                    "delivery_mode": mapping.delivery_mode,
+                    "component_name": operation_name,
+                    "xml_path": str(operation_xml_path),
+                    "placeholder_id": placeholder_id,
+                    "original_connection_id": mapping.original_connection_id,
+                }
+            )
+        # Also add non-send operations (listen/get) normally
+        for action in actions:
+            if action == "send":
+                continue
+            destination = receive_destination
+            destination_type = receive_destination_type
+            operation_name = f"{process.name} - Solace {action.title()} {destination} [{short}]"
+            operation_xml = build_operation_component_xml(
+                action=action,
+                component_name=operation_name,
+                folder_id=process.target_folder_id,
+                profile=profile,
+                destination=destination,
+                destination_type=destination_type,
+                delivery_mode=process.delivery_mode,
+                metadata=metadata,
+            )
+            fail_on_issues(validate_operation_xml(operation_xml))
+            operation_xml_path = components_dir / f"{stem}_{action}_operation.xml"
+            operation_xml_path.write_text(canonical_xml(operation_xml) + "\n", encoding="utf-8")
+            operations.append(
+                {
+                    "action": action,
+                    "destination": destination,
+                    "destination_type": destination_type,
+                    "delivery_mode": process.delivery_mode,
+                    "component_name": operation_name,
+                    "xml_path": str(operation_xml_path),
+                    "placeholder_id": operation_ids[action],
+                }
+            )
+    else:
+        # Standard: one operation per action type
+        for action in actions:
+            destination = send_destination if action == "send" else receive_destination
+            destination_type = send_destination_type if action == "send" else receive_destination_type
+            operation_name = f"{process.name} - Solace {action.title()} {destination} [{short}]"
+            operation_xml = build_operation_component_xml(
+                action=action,
+                component_name=operation_name,
+                folder_id=process.target_folder_id,
+                profile=profile,
+                destination=destination,
+                destination_type=destination_type,
+                delivery_mode=process.delivery_mode,
+                metadata=metadata,
+            )
+            fail_on_issues(validate_operation_xml(operation_xml))
+            operation_xml_path = components_dir / f"{stem}_{action}_operation.xml"
+            operation_xml_path.write_text(canonical_xml(operation_xml) + "\n", encoding="utf-8")
+            operations.append(
+                {
+                    "action": action,
+                    "destination": destination,
+                    "destination_type": destination_type,
+                    "delivery_mode": process.delivery_mode,
+                    "component_name": operation_name,
+                    "xml_path": str(operation_xml_path),
+                    "placeholder_id": operation_ids[action],
+                }
+            )
 
     transformed = transform_process_xml(
         original_xml=original_xml,
@@ -216,6 +284,7 @@ def _plan_process(
         profile=profile,
         connection_id=f"PLAN_CONN_{short}",
         operation_ids=operation_ids,
+        connection_operation_map=connection_operation_map or None,
     )
     fail_on_issues(
         validate_transformed_process_xml(
@@ -263,6 +332,7 @@ def _plan_process(
             "placeholder_id": f"PLAN_CONN_{short}",
         },
         "operations": operations,
+        "connection_operation_map": connection_operation_map,
         "planned_process_xml_path": str(process_xml_path),
         "consumer_set_properties_snippet_path": snippet_path,
     }
