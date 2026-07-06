@@ -67,7 +67,7 @@ def transform_process_xml(
         # Multi-destination: use connection_operation_map if available
         original_conn_id = elem.get("connectionId", "")
         if connection_operation_map and original_conn_id in connection_operation_map:
-            operation_id = connection_operation_map[original_conn_id]
+            operation_id: str | None = connection_operation_map[original_conn_id]
         else:
             operation_id = operation_ids.get(action_key)
         if not operation_id and strict:

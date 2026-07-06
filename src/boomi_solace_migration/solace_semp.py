@@ -379,8 +379,8 @@ class SolaceSempClient:
             return True
         if response.status_code == 400:
             try:
-                status = response.json().get("meta", {}).get("error", {}).get("status", "")
-                return status == "NOT_FOUND"
+                status: str = response.json().get("meta", {}).get("error", {}).get("status", "")
+                return bool(status == "NOT_FOUND")
             except (ValueError, KeyError, AttributeError):
                 pass
         return False
@@ -390,8 +390,8 @@ class SolaceSempClient:
         """Solace returns 400 with ALREADY_EXISTS if the resource already exists on POST."""
         if response.status_code == 400:
             try:
-                status = response.json().get("meta", {}).get("error", {}).get("status", "")
-                return status == "ALREADY_EXISTS"
+                status: str = response.json().get("meta", {}).get("error", {}).get("status", "")
+                return bool(status == "ALREADY_EXISTS")
             except (ValueError, KeyError, AttributeError):
                 pass
         return False

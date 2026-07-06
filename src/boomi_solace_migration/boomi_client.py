@@ -123,7 +123,8 @@ class BoomiClient:
         results = data.get("result", [])
         for result in results:
             if result.get("name") == name and result.get("folderId") == folder_id:
-                return result.get("componentId")
+                cid: str | None = result.get("componentId")
+                return cid
         return None
 
     def create_or_reuse_component(self, xml_body: str) -> str:
